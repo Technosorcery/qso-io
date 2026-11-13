@@ -59,22 +59,17 @@ fn width(bytes: &[u8], size: usize) -> std::result::Result<(), Range<usize>> {
 }
 
 pub(super) fn parse<'a>(
-    input: &Stream<'a>,
     f: FramedField<'a>,
     resolved_type: Option<DataType>,
-) -> Result<Field<'a>> {
+    encoding: ParseEncoding,
+) -> std::result::Result<Field<'a>, AdiError> {
     let raw = f.raw_data;
-    let fail = |cause, span: Range<usize>, numeric_cause| {
-        ContextError::from_external_error(
-            input,
-            AdiError::InvalidValue {
-                field_name: f.specifier.name.to_string(),
-                cause,
-                span: f.value_span.start + span.start..f.value_span.start + span.end,
-                numeric_cause,
-                enumeration: None,
-            },
-        )
+    let fail = |cause, span: Range<usize>, numeric_cause| AdiError::InvalidValue {
+        field_name: f.specifier.name.to_string(),
+        cause,
+        span: f.value_span.start + span.start..f.value_span.start + span.end,
+        numeric_cause,
+        enumeration: None,
     };
 
     let mut text = f.text;
@@ -89,12 +84,8 @@ pub(super) fn parse<'a>(
                     DataType::MultilineString => ValueError::InvalidMultilineString,
                     _ => ValueError::InvalidEnumeration,
                 };
-                check_text(
-                    raw,
-                    input.state.parser_options.encoding,
-                    kind == DataType::MultilineString,
-                )
-                .map_err(|span| fail(reason, span, None))?;
+                check_text(raw, encoding, kind == DataType::MultilineString)
+                    .map_err(|span| fail(reason, span, None))?;
 
                 Value::Text(mem::take(&mut text))
             }
@@ -146,21 +137,16 @@ pub(super) fn parse<'a>(
                 | DataType::SOTARef
                 | DataType::WWFFRef),
             ) => {
-                identifiers::check(kind, &text, raw, input.state.parser_options.encoding).map_err(
-                    |error| {
-                        ContextError::from_external_error(
-                            input,
-                            AdiError::InvalidValue {
-                                field_name: f.specifier.name.to_string(),
-                                cause: error.cause,
-                                span: f.value_span.start + error.span.start
-                                    ..f.value_span.start + error.span.end,
-                                numeric_cause: None,
-                                enumeration: error.enumeration,
-                            },
-                        )
-                    },
-                )?;
+                identifiers::check(kind, &text, raw, encoding).map_err(|error| {
+                    AdiError::InvalidValue {
+                        field_name: f.specifier.name.to_string(),
+                        cause: error.cause,
+                        span: f.value_span.start + error.span.start
+                            ..f.value_span.start + error.span.end,
+                        numeric_cause: None,
+                        enumeration: error.enumeration,
+                    }
+                })?;
                 Value::Text(mem::take(&mut text))
             }
             Some(
@@ -172,25 +158,15 @@ pub(super) fn parse<'a>(
                 | DataType::SecondarySubdivisionList
                 | DataType::SecondaryAdministrativeSubdivisionListAlt),
             ) => {
-                let (members, whole) = lists::parse(
-                    kind,
-                    mem::take(&mut text),
-                    raw,
-                    input.state.parser_options.encoding,
-                )
-                .map_err(|error| {
-                    ContextError::from_external_error(
-                        input,
-                        AdiError::InvalidValue {
-                            field_name: f.specifier.name.to_string(),
-                            cause: error.cause,
-                            span: f.value_span.start + error.span.start
-                                ..f.value_span.start + error.span.end,
-                            numeric_cause: None,
-                            enumeration: error.enumeration,
-                        },
-                    )
-                })?;
+                let (members, whole) = lists::parse(kind, mem::take(&mut text), raw, encoding)
+                    .map_err(|error| AdiError::InvalidValue {
+                        field_name: f.specifier.name.to_string(),
+                        cause: error.cause,
+                        span: f.value_span.start + error.span.start
+                            ..f.value_span.start + error.span.end,
+                        numeric_cause: None,
+                        enumeration: error.enumeration,
+                    })?;
                 text = whole;
                 Value::List(members)
             }
@@ -299,13 +275,10 @@ pub(super) fn parse<'a>(
             // Only descriptor indicators can reach this parser. ADX-only types are
             // rejected before framing; the other categories have no indicator.
             Some(kind) => {
-                return Err(ContextError::from_external_error(
-                    input,
-                    AdiError::TypeUnavailableInAdi {
-                        data_type: kind,
-                        span: f.descriptor_span.clone(),
-                    },
-                ));
+                return Err(AdiError::TypeUnavailableInAdi {
+                    data_type: kind,
+                    span: f.descriptor_span.clone(),
+                });
             }
         })
     };

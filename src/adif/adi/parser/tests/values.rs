@@ -52,9 +52,14 @@ fn resolved_value<'a>(
 ) -> std::result::Result<Field<'a>, StructuralError> {
     let mut input = ascii_stream(bytes);
     let framed = parse_ok(framed_field, &mut input);
-    crate::adif::adi::parser::values::parse(&input, framed, Some(kind)).map_err(|error| {
-        StructuralError::from_context(error, input.current_token_start(), bytes.len())
-    })
+    crate::adif::adi::parser::values::parse(framed, Some(kind), input.state.parser_options.encoding)
+        .map_err(|error| {
+            StructuralError::from_context(
+                ContextError::from_external_error(&input, error),
+                input.current_token_start(),
+                bytes.len(),
+            )
+        })
 }
 
 #[test]
