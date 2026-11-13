@@ -24,9 +24,10 @@ pub(super) mod error;
 mod tests;
 mod values;
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 struct State {
     parser_options: ParseOpts,
+    user_definitions: HashMap<String, definitions::UserFieldRule>,
 }
 
 type Stream<'is> = Stateful<LocatingSlice<&'is [u8]>, State>;
@@ -89,6 +90,7 @@ impl<'a> Parser<'a> {
                 input: LocatingSlice::new(input),
                 state: State {
                     parser_options: options,
+                    ..State::default()
                 },
             },
             input_len: input.len(),
@@ -245,8 +247,11 @@ fn field<'a>(input: &mut Stream<'a>) -> Result<Field<'a>> {
         definitions::resolve(&input.state, FieldSection::Record, &specifier, span.clone())
             .map_err(|error| ContextError::from_external_error(input, error))?;
     let f = frame_value(input, specifier, span)?;
-    definitions::parse_resolved(f, &resolution, input.state.parser_options.encoding)
-        .map_err(|error| ContextError::from_external_error(input, error))
+    let parsed = definitions::parse_resolved(f, &resolution, input.state.parser_options.encoding)
+        .map_err(|error| ContextError::from_external_error(input, error))?;
+    definitions::check_user_constraints(&input.state, &parsed)
+        .map_err(|error| ContextError::from_external_error(input, error))?;
+    Ok(parsed)
 }
 
 fn header_entry<'a>(input: &mut Stream<'a>) -> Result<HeaderEntry<'a>> {
@@ -284,6 +289,10 @@ fn unique_header_entry<'a>(
     }
 
     seen.insert(key, entry.descriptor_span());
+    if let HeaderEntry::UserDefinition(definition) = &entry {
+        definitions::register_user_definition(&mut input.state, definition)
+            .map_err(|error| ContextError::from_external_error(input, error))?;
+    }
     Ok(entry)
 }
 
@@ -556,6 +565,7 @@ mod test {
             input: LocatingSlice::new("<NAME:3>Ray".as_bytes()),
             state: State {
                 parser_options: ParseOpts::default(),
+                ..State::default()
             },
         };
         let parsed = field(&mut basic)
@@ -586,6 +596,7 @@ mod test {
             ),
             state: State {
                 parser_options: ParseOpts::default(),
+                ..State::default()
             },
         };
         let parsed = header(&mut header_text)
