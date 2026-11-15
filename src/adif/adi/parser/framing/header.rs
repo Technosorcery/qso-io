@@ -8,6 +8,8 @@ use super::super::options::ParseOpts;
 use super::field::PermissiveField;
 use super::{Input, decode_text, field, fields};
 use crate::adif::DecodeError;
+use crate::adif::adi::lookup::LookupError;
+use crate::adif::adi::lookup::single_match;
 
 /// A framed header with ordered fields and a cached preamble decoding result.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -20,6 +22,22 @@ pub struct PermissiveHeader<'a> {
 }
 
 impl<'a> PermissiveHeader<'a> {
+    /// Finds a field by ASCII case-insensitive name, reporting ambiguous matches.
+    pub fn field(&self, name: &str) -> Result<Option<&PermissiveField<'a>>, LookupError> {
+        single_match(
+            name,
+            self.fields_named(name),
+            PermissiveField::descriptor_span,
+        )
+    }
+
+    /// Iterates over all matching fields in source order without choosing precedence.
+    pub fn fields_named<'s>(&'s self, name: &str) -> impl Iterator<Item = &'s PermissiveField<'a>> {
+        self.fields
+            .iter()
+            .filter(move |field| field.name().eq_ignore_ascii_case(name))
+    }
+
     /// Borrows every supplied header field in source order, including USERDEFn fields.
     pub fn fields(&self) -> &[PermissiveField<'a>] {
         &self.fields

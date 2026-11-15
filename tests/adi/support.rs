@@ -49,7 +49,7 @@ pub(super) fn record(section: Section<'_>) -> Record<'_> {
 #[track_caller]
 pub(super) fn named<'r, 'a>(record: &'r Record<'a>, name: &str) -> &'r Field<'a> {
     match record.field(name) {
-        Some(f) => f,
+        Ok(Some(f)) => f,
         other => panic!("expected unique field {name:?}, got {other:?}; record: {record:?}"),
     }
 }

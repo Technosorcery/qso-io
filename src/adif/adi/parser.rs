@@ -35,7 +35,7 @@
 //!     other => panic!("expected record, got {other:?}"),
 //! };
 //! let frequency = record
-//!     .field("freq")
+//!     .field("freq")?
 //!     .expect("record should contain FREQ from the supplied descriptor");
 //! assert_eq!(frequency.data_type(), Some(qso_io::adif::DataType::Number));
 //! assert_eq!(frequency.type_indicator(), None);
@@ -43,12 +43,12 @@
 //! assert_eq!(frequency.text(), "14.074");
 //! assert!(
 //!     record
-//!         .field("NOTE")
+//!         .field("NOTE")?
 //!         .expect("record should contain NOTE because the example supplies <NOTE:0>")
 //!         .value()
 //!         .is_none()
 //! );
-//! assert!(record.field("MISSING").is_none());
+//! assert!(record.field("MISSING")?.is_none());
 //! # Ok(())
 //! # }
 //! ```

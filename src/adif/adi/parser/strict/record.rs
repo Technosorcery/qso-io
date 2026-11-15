@@ -13,6 +13,7 @@ use winnow::{
 use super::super::{error::AdiError, framing};
 use super::field::{Field, prepared_field};
 use super::{Stream, definitions};
+use crate::adif::adi::lookup::{LookupError, single_match};
 
 /// A complete ADI record containing at least one field.
 ///
@@ -26,16 +27,21 @@ pub struct Record<'a> {
 }
 
 impl<'a> Record<'a> {
-    /// Finds a field by ASCII case-insensitive name.
-    pub fn field(&self, name: &str) -> Option<&Field<'a>> {
-        self.fields
-            .iter()
-            .find(|f| f.name().eq_ignore_ascii_case(name))
-    }
-
     /// Borrows all fields in their original order.
     pub fn fields(&self) -> &[Field<'a>] {
         &self.fields
+    }
+
+    /// Finds a field by ASCII case-insensitive name, reporting ambiguous matches.
+    pub fn field(&self, name: &str) -> Result<Option<&Field<'a>>, LookupError> {
+        single_match(name, self.fields_named(name), Field::descriptor_span)
+    }
+
+    /// Iterates over matching fields in source order without choosing precedence.
+    pub fn fields_named<'s>(&'s self, name: &str) -> impl Iterator<Item = &'s Field<'a>> {
+        self.fields
+            .iter()
+            .filter(move |field| field.name().eq_ignore_ascii_case(name))
     }
 
     /// Returns the section's syntactic byte range, excluding surrounding separators.

@@ -12,6 +12,7 @@ fn standard_fields_resolve_without_inline_indicators() {
     assert_eq!(
         header
             .field("PROGRAMID")
+            .expect("strict parser should yield unique descriptor names")
             .expect("header should contain PROGRAMID")
             .data_type(),
         Some(DataType::String)

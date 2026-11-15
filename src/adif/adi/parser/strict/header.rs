@@ -15,6 +15,7 @@ use super::declarations::UserDefinition;
 use super::field::{Field, strict_descriptor, strict_frame_value};
 use super::{Stream, declarations, decode_located, definitions};
 use crate::adif::FieldSection;
+use crate::adif::adi::lookup::{LookupError, single_match};
 
 /// A header field or USERDEF declaration.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -67,23 +68,36 @@ pub struct Header<'a> {
 }
 
 impl<'a> Header<'a> {
-    /// Finds a header entry by ASCII case-insensitive name.
-    pub fn entry(&self, name: &str) -> Option<&HeaderEntry<'a>> {
-        self.entries
-            .iter()
-            .find(|e| e.name().eq_ignore_ascii_case(name))
-    }
-    /// Finds an ordinary header field; USERDEF entries use entry lookup.
-    pub fn field(&self, name: &str) -> Option<&Field<'a>> {
-        match self.entry(name)? {
-            HeaderEntry::Field(f) => Some(f),
-            HeaderEntry::UserDefinition(_) => None,
-        }
-    }
-
     /// Borrows header fields and declarations in their original order.
     pub fn entries(&self) -> &[HeaderEntry<'a>] {
         &self.entries
+    }
+
+    /// Finds a header entry by ASCII case-insensitive name, reporting ambiguous matches.
+    pub fn entry(&self, name: &str) -> Result<Option<&HeaderEntry<'a>>, LookupError> {
+        single_match(name, self.entries_named(name), HeaderEntry::descriptor_span)
+    }
+
+    /// Iterates over matching header entries in source order without choosing precedence.
+    pub fn entries_named<'s>(&'s self, name: &str) -> impl Iterator<Item = &'s HeaderEntry<'a>> {
+        self.entries
+            .iter()
+            .filter(move |entry| entry.name().eq_ignore_ascii_case(name))
+    }
+
+    /// Finds an ordinary header field by name, reporting ambiguous matches.
+    ///
+    /// USERDEF descriptors are available through entry lookup.
+    pub fn field(&self, name: &str) -> Result<Option<&Field<'a>>, LookupError> {
+        single_match(name, self.fields_named(name), Field::descriptor_span)
+    }
+
+    /// Iterates over matching ordinary header fields in source order.
+    pub fn fields_named<'s>(&'s self, name: &str) -> impl Iterator<Item = &'s Field<'a>> {
+        self.entries_named(name).filter_map(|entry| match entry {
+            HeaderEntry::Field(field) => Some(field),
+            HeaderEntry::UserDefinition(_) => None,
+        })
     }
 
     /// Borrows the original preamble bytes, including line endings and blanks.

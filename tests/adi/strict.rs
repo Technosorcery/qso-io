@@ -44,7 +44,12 @@ fn subdivision_membership_preserves_groups_without_requiring_or_inferring_dxcc()
         let parsed = record(next_section(&mut parser));
         let subdivision = parsed
             .field("STATE")
-            .or_else(|| parsed.field("MY_STATE"))
+            .expect("strict parser should yield unique descriptor names")
+            .or_else(|| {
+                parsed
+                    .field("MY_STATE")
+                    .expect("strict parser should yield unique descriptor names")
+            })
             .unwrap_or_else(|| panic!("expected a subdivision field in {parsed:?}"));
         assert_eq!(subdivision.text(), "ca", "input: {bytes:?}");
         assert!(
@@ -52,7 +57,14 @@ fn subdivision_membership_preserves_groups_without_requiring_or_inferring_dxcc()
             "membership must retain text without selecting a country's variant: {subdivision:?}"
         );
         assert_eq!(
-            parsed.field("DXCC").is_some() || parsed.field("MY_DXCC").is_some(),
+            parsed
+                .field("DXCC")
+                .expect("strict parser should yield unique descriptor names")
+                .is_some()
+                || parsed
+                    .field("MY_DXCC")
+                    .expect("strict parser should yield unique descriptor names")
+                    .is_some(),
             bytes.starts_with(b"<DXCC") || bytes.starts_with(b"<MY_DXCC"),
             "parsing must not infer a DXCC field: {parsed:?}"
         );
@@ -284,6 +296,7 @@ fn sections_have_syntactic_spans_and_can_outlive_the_parser() {
     assert_eq!(
         header
             .field("programid")
+            .expect("strict parser should yield unique descriptor names")
             .expect("header should contain PROGRAMID from the supplied descriptor")
             .value_span(),
         14..14
@@ -309,6 +322,7 @@ fn a_valid_prefix_is_yielded_before_one_terminal_error() {
     assert_eq!(
         record(next_section(&mut parser))
             .field("NAME")
+            .expect("strict parser should yield unique descriptor names")
             .expect("section should contain NAME from the supplied descriptor")
             .text(),
         "A"
@@ -316,6 +330,7 @@ fn a_valid_prefix_is_yielded_before_one_terminal_error() {
     assert_eq!(
         record(next_section(&mut parser))
             .field("NAME")
+            .expect("strict parser should yield unique descriptor names")
             .expect("section should contain NAME from the supplied descriptor")
             .text(),
         "B"
@@ -384,6 +399,7 @@ fn clean_exhaustion_is_fused_and_accepts_ignored_separators() {
             assert_eq!(
                 record
                     .field("NAME")
+                    .expect("strict parser should yield unique descriptor names")
                     .expect("record should retain NAME from the supplied <NAME:1>A field")
                     .text(),
                 "A",
@@ -494,12 +510,20 @@ fn headers_distinguish_definitions_from_fields() {
     assert_eq!(epc.text(), "EPC");
     assert_eq!(epc.constraint(), None, "declaration {epc:?}");
     assert!(
-        header.field("USERDEF1").is_none(),
+        header
+            .field("USERDEF1")
+            .expect("strict parser should yield unique descriptor names")
+            .is_none(),
         "expected a declaration rather than an ordinary field, got {:?}",
-        header.field("USERDEF1")
+        header
+            .field("USERDEF1")
+            .expect("strict parser should yield unique descriptor names")
     );
     assert!(
-        header.entry("userdef1").is_some(),
+        header
+            .entry("userdef1")
+            .expect("strict parser should yield unique descriptor names")
+            .is_some(),
         "expected USERDEF1 entry, got {header:?}"
     );
     let sizes = definition(&header.entries()[3]);
@@ -527,6 +551,7 @@ fn headers_distinguish_definitions_from_fields() {
     assert_eq!(
         record(next_section(&mut parser))
             .field("EPC")
+            .expect("strict parser should yield unique descriptor names")
             .expect("record should contain EPC from the supplied <EPC:3>123 field")
             .text(),
         "123"
@@ -541,9 +566,12 @@ fn values_preserve_absence_empty_contents_and_source_spelling() {
     let mut parser = StrictParser::new(bytes, ParseOpts::default());
     let rec = record(next_section(&mut parser));
     assert!(
-        rec.field("X").is_none(),
+        rec.field("X")
+            .expect("strict parser should yield unique descriptor names")
+            .is_none(),
         "expected X to be absent, got {:?}",
         rec.field("X")
+            .expect("strict parser should yield unique descriptor names")
     );
     for name in ["A", "B"] {
         let f = named(&rec, name);

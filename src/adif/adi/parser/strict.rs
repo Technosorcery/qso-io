@@ -79,7 +79,7 @@ type Stream<'is> = Stateful<LocatingSlice<&'is [u8]>, State>;
 /// };
 /// assert_eq!(
 ///     record
-///         .field("call")
+///         .field("call")?
 ///         .expect("record should contain CALL from the supplied descriptor")
 ///         .text(),
 ///     "W1AW"

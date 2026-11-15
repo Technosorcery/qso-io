@@ -309,3 +309,98 @@ fn honors_existing_section_boundaries() {
             .is_none()
     );
 }
+
+#[test]
+fn duplicate_lookup_reports_all_occurrences() {
+    use qso_io::adif::adi::lookup::LookupError;
+
+    let bytes = b"<CALL:1>a<X:1>x<call:1>b<CALL:1>c<EOR><Z:1>d<EOR>";
+    let mut parser = PermissiveParser::new(bytes, ParseOpts::default());
+    let record = record(next_section(&mut parser));
+    let error = record
+        .field("CaLl")
+        .expect_err("three CALL descriptors should make lookup ambiguous");
+    assert_eq!(
+        error,
+        LookupError::Ambiguous {
+            name: "CaLl".into(),
+            descriptor_spans: vec![0..8, 15..23, 24..32]
+        }
+    );
+    assert_eq!(
+        record
+            .fields_named("call")
+            .map(|f| f.text())
+            .collect::<Vec<_>>(),
+        [Ok("a"), Ok("b"), Ok("c")]
+    );
+    assert_eq!(
+        record
+            .field("x")
+            .expect("X lookup should be unambiguous")
+            .map(|f| f.text()),
+        Some(Ok("x"))
+    );
+    assert!(matches!(
+        next_section(&mut parser),
+        PermissiveSection::Record(_)
+    ));
+}
+
+#[test]
+fn header_lookup_reports_all_duplicate_declarations() {
+    use qso_io::adif::adi::lookup::LookupError;
+
+    let bytes = b"H<USERDEF1:1>a<X:1>x<userdef1:1>b<USERDEF1:1>c<EOH>";
+    let mut parser = PermissiveParser::new(bytes, ParseOpts::default());
+    let header = header(next_section(&mut parser));
+    let error = header
+        .field("USERDEF1")
+        .expect_err("three USERDEF1 descriptors should make lookup ambiguous");
+    assert_eq!(
+        error,
+        LookupError::Ambiguous {
+            name: "USERDEF1".into(),
+            descriptor_spans: vec![1..13, 20..32, 33..45]
+        }
+    );
+    assert_eq!(
+        header
+            .fields_named("UsErDeF1")
+            .map(|f| f.text())
+            .collect::<Vec<_>>(),
+        [Ok("a"), Ok("b"), Ok("c")]
+    );
+    assert!(
+        header
+            .field("absent")
+            .expect("absent name cannot be ambiguous")
+            .is_none()
+    );
+}
+
+#[test]
+fn lookup_distinguishes_missing_empty_and_undecodable() {
+    let mut parser = PermissiveParser::new(b"<EMPTY:0><BAD:1>\xff<EOR>", ParseOpts::default());
+    let record = record(next_section(&mut parser));
+    assert!(
+        record
+            .field("missing")
+            .expect("missing name cannot be ambiguous")
+            .is_none()
+    );
+    assert_eq!(record.fields_named("missing").count(), 0);
+    let empty = record
+        .field("empty")
+        .expect("EMPTY has one occurrence")
+        .expect("EMPTY descriptor is present");
+    assert_eq!(empty.text(), Ok(""));
+    let bad = record
+        .field("bad")
+        .expect("BAD has one occurrence")
+        .expect("BAD descriptor is present");
+    assert!(matches!(
+        bad.text(),
+        Err(DecodeError::NonAscii { offset: 0 })
+    ));
+}

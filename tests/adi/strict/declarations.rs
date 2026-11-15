@@ -295,6 +295,7 @@ fn userdef_collisions_fail_when_the_declaration_is_added() {
         .expect("zero-number target should be allowed in a complete USERDEF header");
     let entry = header
         .entry("USERDEF1")
+        .expect("strict parser should yield unique descriptor names")
         .unwrap_or_else(|| panic!("expected USERDEF1 declaration in {header:?}"));
     assert_eq!(definition(entry).field_name(), "USERDEF000");
 }

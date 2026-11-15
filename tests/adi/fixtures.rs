@@ -43,6 +43,7 @@ fn upstream_difa_fixture_preserves_prefix_before_invalid_mode() {
     assert_eq!(
         header
             .field("ADIF_VER")
+            .expect("strict parser should yield unique descriptor names")
             .expect("fixture header should contain ADIF_VER")
             .text(),
         "3.1.4"
@@ -178,6 +179,94 @@ fn upstream_unterminated_fixture_has_two_complete_records_before_failure() {
     );
     assert_eq!(error.span(), bytes.len()..bytes.len());
     assert_exhausted(&mut parser);
+}
+
+#[test]
+fn undercount_fixture_retains_declared_contents_and_strict_rejection_locations() {
+    use qso_io::adif::adi::parser::permissive::{PermissiveParser, PermissiveSection};
+    let bytes = fixture!("transadif/test-cases/02-field-length/1-undercount-in.adi");
+    for (field_length, name) in [
+        (LengthUnit::Bytes, "Juán Muñoz UNDER"),
+        (LengthUnit::UnicodeScalars, "Juán Muñoz UNDER\r\n"),
+    ] {
+        let opts = ParseOpts {
+            encoding: ParseEncoding::Utf8,
+            field_length,
+        };
+        let mut p = PermissiveParser::new(bytes, opts);
+        assert!(matches!(p.next(), Some(Ok(PermissiveSection::Header(_)))));
+        let r = match p.next() {
+            Some(Ok(PermissiveSection::Record(r))) => r,
+            other => panic!("expected framed fixture record, got {other:?}"),
+        };
+        assert_eq!(
+            r.field("name")
+                .expect("fixture names should be unique")
+                .expect("fixture supplies NAME")
+                .raw_data(),
+            name.as_bytes()
+        );
+        for n in ["notes", "comment"] {
+            assert_eq!(
+                r.field(n)
+                    .expect("fixture names should be unique")
+                    .expect("fixture supplies this field")
+                    .raw_data(),
+                b"UTF with undercount if read as ISO\r"
+            );
+        }
+        assert_exhausted(&mut p);
+        let mut s = StrictParser::new(bytes, opts);
+        let _ = next_section(&mut s);
+        let e = next_error(&mut s);
+        let name = if field_length == LengthUnit::Bytes {
+            "notes"
+        } else {
+            "name"
+        };
+        assert!(
+            matches!(e.kind(),StructuralErrorKind::InvalidValue{field_name,..}if field_name==name),
+            "{e:?}"
+        );
+        assert_eq!(&bytes[e.span()], b"\r");
+        assert_exhausted(&mut s);
+    }
+}
+
+#[test]
+fn overcount_scalar_fixture_preserves_the_consumed_opening_bracket() {
+    use qso_io::adif::adi::parser::permissive::{PermissiveParser, PermissiveSection};
+    let bytes = fixture!("transadif/test-cases/02-field-length/2-overcount-in.adi");
+    let opts = ParseOpts {
+        encoding: ParseEncoding::Utf8,
+        field_length: LengthUnit::UnicodeScalars,
+    };
+    let mut p = PermissiveParser::new(bytes, opts);
+    assert!(matches!(p.next(), Some(Ok(PermissiveSection::Header(_)))));
+    let r = match p.next() {
+        Some(Ok(PermissiveSection::Record(r))) => r,
+        other => panic!("expected overcount-framed record, got {other:?}"),
+    };
+    assert_eq!(
+        r.field("name")
+            .expect("fixture names should be unique")
+            .expect("fixture supplies NAME")
+            .raw_data(),
+        "Juán Muñoz Marín OVER\r\n<".as_bytes()
+    );
+    assert!(
+        r.field("qso_date")
+            .expect("lookup should not be ambiguous")
+            .is_none()
+    );
+    assert_eq!(
+        r.field("time_on")
+            .expect("fixture names should be unique")
+            .expect("fixture supplies TIME_ON")
+            .text(),
+        Ok("0200")
+    );
+    assert_exhausted(&mut p);
 }
 
 #[test]
