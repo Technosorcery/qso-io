@@ -2,7 +2,11 @@
 
 use std::ops::Range;
 
+use winnow::{Parser as _, Result, stream::Location, token::take_until};
+
+use super::super::options::ParseOpts;
 use super::field::PermissiveField;
+use super::{Input, field, fields};
 
 /// A complete framed ADI record preserving every supplied field in source order.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -21,4 +25,18 @@ impl<'a> PermissiveRecord<'a> {
     pub fn span(&self) -> Range<usize> {
         self.span.clone()
     }
+}
+
+pub(in crate::adif::adi::parser) fn parse<'a>(
+    input: &mut Input<'a, ParseOpts>,
+) -> Result<crate::adif::adi::parser::framing::record::PermissiveRecord<'a>> {
+    take_until(0.., '<').void().parse_next(input)?;
+    let start = input.current_token_start();
+    let (fields, end_span) = fields(input, "<EOR>", 1, field::parse)?;
+    Ok(
+        crate::adif::adi::parser::framing::record::PermissiveRecord {
+            span: start..end_span.end,
+            fields,
+        },
+    )
 }

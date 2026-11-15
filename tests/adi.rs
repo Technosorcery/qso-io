@@ -4,5 +4,9 @@
 mod support;
 #[path = "adi/fixtures.rs"]
 mod fixtures;
+#[path = "adi/framing.rs"]
+mod framing;
+#[path = "adi/permissive.rs"]
+mod permissive;
 #[path = "adi/strict.rs"]
 mod strict;

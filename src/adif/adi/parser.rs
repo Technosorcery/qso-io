@@ -106,4 +106,5 @@
 pub mod error;
 pub mod framing;
 pub mod options;
+pub mod permissive;
 pub mod strict;

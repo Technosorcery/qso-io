@@ -214,6 +214,12 @@ fn declared_length<S: std::fmt::Debug>(input: &mut Input<'_, S>) -> Result<usize
     })
 }
 
+pub(in crate::adif::adi::parser) fn data_specifier<'a, S: std::fmt::Debug>(
+    input: &mut Input<'a, S>,
+) -> Result<Specifier<'a>> {
+    descriptor(input, |_, _, _| Ok(()))
+}
+
 pub(in crate::adif::adi::parser) fn descriptor<'a, S: std::fmt::Debug>(
     input: &mut Input<'a, S>,
     mut check_indicator: impl FnMut(&mut Input<'a, S>, &'a str, Range<usize>) -> Result<()>,
@@ -271,4 +277,12 @@ pub(in crate::adif::adi::parser) fn descriptor_text<'a, S: std::fmt::Debug>(
             },
         )
     })
+}
+
+pub(in crate::adif::adi::parser) fn parse<'a>(
+    input: &mut Input<'a, ParseOpts>,
+) -> Result<PermissiveField<'a>> {
+    let (specifier, span) = data_specifier.with_span().parse_next(input)?;
+    let options = input.state;
+    frame_value(input, specifier, span, options)
 }

@@ -2,9 +2,11 @@
 
 use std::{borrow::Cow, ops::Range};
 
-use winnow::Result;
+use winnow::{Parser as _, Result, token::take_till};
 
+use super::super::options::ParseOpts;
 use super::field::PermissiveField;
+use super::{Input, decode_text, field, fields};
 use crate::adif::DecodeError;
 
 /// A framed header with ordered fields and a cached preamble decoding result.
@@ -42,4 +44,22 @@ impl<'a> PermissiveHeader<'a> {
     pub fn text(&self) -> Result<&str, &DecodeError> {
         self.text.as_deref()
     }
+}
+
+pub(in crate::adif::adi::parser) fn parse<'a>(
+    input: &mut Input<'a, ParseOpts>,
+) -> Result<crate::adif::adi::parser::framing::header::PermissiveHeader<'a>> {
+    let (text_bytes, text_span) = take_till(0.., b'<').with_span().parse_next(input)?;
+    let text = decode_text(text_bytes, input.state.encoding);
+    let (fields, end_span) = fields(input, "<EOH>", 0, field::parse)?;
+    take_till(0.., b'<').void().parse_next(input)?;
+    Ok(
+        crate::adif::adi::parser::framing::header::PermissiveHeader {
+            span: text_span.start..end_span.end,
+            text_bytes,
+            text_span,
+            text,
+            fields,
+        },
+    )
 }
