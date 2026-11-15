@@ -1,4 +1,50 @@
-//! Strict ADI parsing using shared descriptor and section framing.
+//! Strict and permissive parsing of length-delimited ADI input.
+//!
+//! [`strict::StrictParser`] reads complete ADI sections with typed values and the
+//! crate's supported ADIF checks. [`permissive::PermissiveParser`] reads complete
+//! sections without interpreting field contents or document declarations.
+//! Both preserve original bytes and source locations and use [`ParseOpts`](crate::adif::adi::parser::options::ParseOpts)
+//! for explicit encoding and length interpretation.
+//!
+//! Permissive results retain duplicate fields, unchecked UTF-8 indicators, and
+//! cached decoding errors when value boundaries are known. Strict decoding and
+//! type failures terminate iteration. Invalid framing is terminal for both
+//! parsers; previously yielded sections remain available.
+//!
+//! Single-match lookup returns `Result<Option<_>, adi::lookup::LookupError>`: absence
+//! is `Ok(None)`, and multiple matching descriptors produce an ambiguity error
+//! containing every matching descriptor span. `fields_named()` iterates over
+//! matches in source order. Names use ASCII case-insensitive comparison.
+//!
+//! [`StandardField`](crate::adif::StandardField) describes standard field definitions. Reference types such
+//! as [`AntPath`](crate::adif::AntPath), [`ArrlSection`](crate::adif::ArrlSection), [`Band`](crate::adif::Band) and [`DxccEntity`](crate::adif::DxccEntity) describe enumeration
+//! identities and their metadata; parser membership checks use these same types.
+//!
+//! # Permissive contents
+//!
+//! Permissive fields expose cached `text() -> Result<&str, &DecodeError>` and
+//! `raw_data()` without typed-value conversion. An empty supplied value has
+//! empty raw bytes and `Ok("")` text. An absent indicator is `None`; an explicitly
+//! empty indicator is `Some("")`. Header preambles follow the same decoding rule.
+//! UTF-8 names and indicators are independent of the selected value encoding.
+//!
+//! ```
+//! use qso_io::adif::adi::parser::options::{ParseOpts};
+//! use qso_io::adif::adi::parser::permissive::{PermissiveParser, PermissiveSection};
+//! # fn main() -> Result<(), Box<dyn std::error::Error>> {
+//! let mut parser = PermissiveParser::new(b"<K_INDEX:4>1.33<EOR>", ParseOpts::default());
+//! let record = match parser.next() {
+//!     Some(Ok(PermissiveSection::Record(record))) => record,
+//!     other => panic!("expected the supplied complete record, got {other:?}"),
+//! };
+//! let field = record.field("K_INDEX")?
+//!     .expect("record should contain K_INDEX because the input supplies that descriptor");
+//! assert_eq!(field.text().map_err(Clone::clone)?, "1.33");
+//! assert_eq!(field.raw_data(), b"1.33");
+//! // Text is retained without asserting that it is an ADIF Integer.
+//! # Ok(())
+//! # }
+//! ```
 //!
 //! # Strict defined values
 //!

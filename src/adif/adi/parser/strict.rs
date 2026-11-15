@@ -48,11 +48,14 @@ type Stream<'is> = Stateful<LocatingSlice<&'is [u8]>, State>;
 /// USERDEF and application-field types are validated before a section is yielded.
 /// Document rules belong to this parser independently of returned headers.
 ///
-/// Historical enumeration members are accepted independently of QSO-date
-/// applicability. Primary subdivision membership spans the supplied country
-/// groups independently of record DXCC, without identifying or inferring a
-/// country. Recommended enumerations for String fields such as CONTEST_ID remain
-/// advisory during parsing.
+/// Standard enumeration membership uses ASCII case-insensitive comparison
+/// without trimming or Unicode normalization. Historical enumeration members
+/// are accepted independently of QSO-date applicability. Primary subdivision
+/// membership spans the supplied country groups independently of record DXCC,
+/// without identifying or inferring a country. Recommended enumerations for
+/// String fields such as CONTEST_ID remain advisory during parsing. CREDIT
+/// fields are tried as CreditList first, then
+/// as the legacy AwardList if the value fails CreditList grammar or membership.
 ///
 /// Decoding rejects invalid input without replacement. ASCII failures identify
 /// the first non-ASCII byte; UTF-8 failures identify the invalid or incomplete

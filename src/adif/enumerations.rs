@@ -1,8 +1,4 @@
-//! ADIF 3.1.8 reference identities used by the parser and available to callers.
-//!
-//! Parsing uses ASCII case-insensitive code identity without trimming or Unicode
-//! normalization. Historical records remain available independently of whether
-//! their dates apply to a particular QSO.
+//! ADIF 3.1.8 reference identities and metadata, including historical entries.
 
 mod ant_path;
 mod arrl_section;

@@ -256,7 +256,7 @@ impl<'a> SecondarySubdivisionAlt<'a> {
     /// NZ_Regions codes require membership in the supplied region/district table.
     /// Other enumeration codes are retained without external membership checks.
     /// Components must be nonempty. Name matching ignores ASCII case without
-    /// trimming; text repertoire checks belong to the selected parsing encoding.
+    /// trimming.
     pub fn parse_member(member: &'a str) -> Option<Self> {
         let (name, code) = member.split_once(':')?;
         if name.is_empty() || code.is_empty() {

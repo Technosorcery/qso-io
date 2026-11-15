@@ -26,7 +26,7 @@ mod standard_field;
 mod text;
 pub mod value;
 
-/// Text-decoding cause retained by a located structural error.
+/// A text-decoding failure in field data or a header preamble.
 #[derive(Debug, Error, Clone, PartialEq, Eq)]
 pub enum DecodeError {
     #[error("Non-ASCII byte at offset {offset}")]

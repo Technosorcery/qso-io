@@ -1,8 +1,6 @@
 //! Radio operation and award reference types defined by ADIF 3.1.8.
 //!
 //! These maintained types follow the [ADIF enumeration tables](https://adif.org/318/ADIF_318.htm#Enumerations).
-//! Parsing accepts ASCII case differences, but preserves distinctions such as
-//! embedded spaces, punctuation, and legacy import-only values.
 
 mod band;
 mod contest;
