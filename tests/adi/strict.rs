@@ -1,65 +1,20 @@
-//! Consumer tests: only the public API is available in this module.
-use qso_io::adif::adi::StructuralError;
-use qso_io::adif::{
-    DecodeError, LengthUnit, ParseEncoding, ParseOpts,
-    adi::{Parser, Section, StructuralErrorKind, SyntaxErrorKind},
-};
-
-#[track_caller]
-fn next_section<'a>(parser: &mut Parser<'a>) -> Section<'a> {
-    match parser.next() {
-        Some(Ok(section)) => section,
-        other => panic!("expected a complete section, got {other:?}; remaining parser: {parser:?}"),
-    }
-}
-
-#[track_caller]
-fn next_error(parser: &mut Parser<'_>) -> StructuralError {
-    match parser.next() {
-        Some(Err(error)) => error,
-        other => {
-            panic!("expected a terminal parsing error, got {other:?}; remaining parser: {parser:?}")
-        }
-    }
-}
-
-#[track_caller]
-fn assert_exhausted(parser: &mut Parser<'_>) {
-    let actual = parser.next();
-    assert!(
-        actual.is_none(),
-        "expected permanent exhaustion, got {actual:?}; remaining parser: {parser:?}"
-    );
-}
-
-#[track_caller]
-fn record(section: Section<'_>) -> qso_io::adif::adi::Record<'_> {
-    match section {
-        Section::Record(record) => record,
-        other => panic!("expected record, got {other:?}"),
-    }
-}
-
-#[track_caller]
-fn named<'r, 'a>(
-    record: &'r qso_io::adif::adi::Record<'a>,
-    name: &str,
-) -> &'r qso_io::adif::Field<'a> {
-    record
-        .field(name)
-        .unwrap_or_else(|| panic!("expected field {name:?}, got {record:?}"))
-}
-
-#[track_caller]
-fn definition<'r, 'a>(
-    entry: &'r qso_io::adif::adi::HeaderEntry<'a>,
-) -> &'r qso_io::adif::adi::UserDefinition<'a> {
-    match entry {
-        qso_io::adif::adi::HeaderEntry::UserDefinition(definition) => definition,
-        other => panic!("expected USERDEF declaration, got {other:?}"),
-    }
-}
-
+use super::support::*;
+use qso_io::adif::adi::parser::error;
+use qso_io::adif::adi::parser::error::{StructuralErrorKind, SyntaxErrorKind};
+use qso_io::adif::adi::parser::options::{LengthUnit, ParseEncoding, ParseOpts};
+use qso_io::adif::adi::parser::strict::{Section, StrictParser};
+use qso_io::adif::{DataType, DecodeError};
+use std::ops::Range;
+#[path = "strict/applications.rs"]
+mod applications;
+#[path = "strict/declarations.rs"]
+mod declarations;
+#[path = "strict/definitions.rs"]
+mod definitions;
+#[path = "strict/lists.rs"]
+mod lists;
+#[path = "strict/values.rs"]
+mod values;
 #[test]
 fn subdivision_membership_preserves_groups_without_requiring_or_inferring_dxcc() {
     use qso_io::adif::primary_subdivisions::{canada, united_states, venezuela};
@@ -85,7 +40,7 @@ fn subdivision_membership_preserves_groups_without_requiring_or_inferring_dxcc()
         &b"<DXCC:1>1<STATE:2>ca<EOR>"[..],
         &b"<MY_DXCC:1>1<MY_STATE:2>ca<EOR>"[..],
     ] {
-        let mut parser = Parser::new(bytes, ParseOpts::default());
+        let mut parser = StrictParser::new(bytes, ParseOpts::default());
         let parsed = record(next_section(&mut parser));
         let subdivision = parsed
             .field("STATE")
@@ -93,7 +48,7 @@ fn subdivision_membership_preserves_groups_without_requiring_or_inferring_dxcc()
             .unwrap_or_else(|| panic!("expected a subdivision field in {parsed:?}"));
         assert_eq!(subdivision.text(), "ca", "input: {bytes:?}");
         assert!(
-            matches!(subdivision.value(), Some(qso_io::adif::Value::Text(text)) if text == "ca"),
+            matches!(subdivision.value(), Some(qso_io::adif::value::Value::Text(text)) if text == "ca"),
             "membership must retain text without selecting a country's variant: {subdivision:?}"
         );
         assert_eq!(
@@ -104,7 +59,7 @@ fn subdivision_membership_preserves_groups_without_requiring_or_inferring_dxcc()
         assert_exhausted(&mut parser);
     }
 
-    let mut parser = Parser::new(b"<STATE:3>???<EOR>", ParseOpts::default());
+    let mut parser = StrictParser::new(b"<STATE:3>???<EOR>", ParseOpts::default());
     let error = next_error(&mut parser);
     assert!(
         matches!(
@@ -151,7 +106,7 @@ fn reference_types_and_parser_share_standard_membership() {
     );
 
     let bytes = b"<ANT_PATH:1>g<ARRL_SECT:3>gta<CONT:2>eu<CREDIT_GRANTED:8>WAS:lotw<EOR>";
-    let mut parser = Parser::new(bytes, ParseOpts::default());
+    let mut parser = StrictParser::new(bytes, ParseOpts::default());
     let section = record(next_section(&mut parser));
     assert_eq!(
         named(&section, "ANT_PATH")
@@ -173,7 +128,7 @@ fn reference_types_and_parser_share_standard_membership() {
         " EU".parse::<Continent>().is_err(),
         "reference parsing must not trim values"
     );
-    let mut parser = Parser::new(b"<CONT:3> EU<EOR>", ParseOpts::default());
+    let mut parser = StrictParser::new(b"<CONT:3> EU<EOR>", ParseOpts::default());
     let error = next_error(&mut parser);
     assert!(
         matches!(
@@ -189,7 +144,7 @@ fn reference_types_and_parser_share_standard_membership() {
 
 #[test]
 fn alternative_enumeration_labels_outlive_the_error() {
-    let mut parser = Parser::new(b"<CREDIT_GRANTED:8>AJA,NOPE<EOR>", ParseOpts::default());
+    let mut parser = StrictParser::new(b"<CREDIT_GRANTED:8>AJA,NOPE<EOR>", ParseOpts::default());
     let labels: Vec<Option<&'static str>> = {
         let error = next_error(&mut parser);
         let StructuralErrorKind::NoMatchingType { failures, .. } = error.kind() else {
@@ -208,7 +163,7 @@ fn alternative_enumeration_labels_outlive_the_error() {
 #[test]
 fn identifier_membership_errors_retain_the_expected_enumeration() {
     let bytes = b"<IOTA:6>ZZ-001<EOR>";
-    let mut parser = Parser::new(bytes, ParseOpts::default());
+    let mut parser = StrictParser::new(bytes, ParseOpts::default());
 
     let error = next_error(&mut parser);
     assert!(
@@ -216,7 +171,7 @@ fn identifier_membership_errors_retain_the_expected_enumeration() {
             error.kind(),
             StructuralErrorKind::InvalidValue {
                 field_name,
-                cause: qso_io::adif::ValueError::InvalidIOTARefNo,
+                cause: qso_io::adif::value::ValueError::InvalidIOTARefNo,
                 enumeration: Some("Continent"),
             } if field_name == "IOTA"
         ),
@@ -267,7 +222,7 @@ fn options_and_read_only_values_are_usable_by_a_consumer() {
             "José",
         ),
     ] {
-        let mut parser = Parser::new(
+        let mut parser = StrictParser::new(
             bytes,
             ParseOpts {
                 encoding,
@@ -312,7 +267,7 @@ fn options_and_read_only_values_are_usable_by_a_consumer() {
 #[test]
 fn sections_have_syntactic_spans_and_can_outlive_the_parser() {
     let bytes = b"P<PROGRAMID:0><EOH>\r\n<NAME:1>A<EOR>\nignore<NAME:0><EOR>\r\n";
-    let sections: Vec<_> = Parser::new(bytes, ParseOpts::default())
+    let sections: Vec<_> = StrictParser::new(bytes, ParseOpts::default())
         .collect::<Result<_, _>>()
         .unwrap_or_else(|error| {
             panic!("input {bytes:?}: expected complete sections, got {error:?}")
@@ -345,7 +300,7 @@ fn sections_have_syntactic_spans_and_can_outlive_the_parser() {
 #[test]
 fn a_valid_prefix_is_yielded_before_one_terminal_error() {
     let bytes = b"P<EOH><NAME:1>A<EOR><NAME:1>B<EOR><NAME:3>Ra";
-    let mut parser = Parser::new(bytes, ParseOpts::default());
+    let mut parser = StrictParser::new(bytes, ParseOpts::default());
     let section = next_section(&mut parser);
     assert!(
         matches!(section, Section::Header(_)),
@@ -383,7 +338,7 @@ fn duplicate_errors_keep_original_locations_and_do_not_yield_the_bad_section() {
         &b"<CALL:1>A<EOR><NAME:1>B<name:1>B<EOR>"[..],
         &b"P<NAME:1>B<name:1>B<EOH>"[..],
     ] {
-        let mut parser = Parser::new(bytes, ParseOpts::default());
+        let mut parser = StrictParser::new(bytes, ParseOpts::default());
         if bytes.starts_with(b"<CALL") {
             let _ = next_section(&mut parser);
         }
@@ -407,13 +362,13 @@ fn duplicate_errors_keep_original_locations_and_do_not_yield_the_bad_section() {
 #[test]
 fn clean_exhaustion_is_fused_and_accepts_ignored_separators() {
     fn requires_fused(_: impl std::iter::FusedIterator) {}
-    requires_fused(Parser::new(b"", ParseOpts::default()));
+    requires_fused(StrictParser::new(b"", ParseOpts::default()));
     for bytes in [
         &b""[..],
         &b"<NAME:1>A<EOR>\r\n\n"[..],
         &b"<NAME:1>A<EOR> trailing text"[..],
     ] {
-        let mut parser = Parser::new(bytes, ParseOpts::default());
+        let mut parser = StrictParser::new(bytes, ParseOpts::default());
         let records: Vec<_> = parser
             .by_ref()
             .map(|section| {
@@ -447,7 +402,7 @@ fn decoding_failures_are_locatable_and_terminal() {
         (&b"P\xff<EOH><NAME:1>C<EOR>"[..], 1..2),
         (&b"<NAME:3>A\xffB<EOR><NAME:1>C<EOR>"[..], 9..10),
     ] {
-        let mut parser = Parser::new(bytes, ParseOpts::default());
+        let mut parser = StrictParser::new(bytes, ParseOpts::default());
         let error = next_error(&mut parser);
         assert_eq!(error.span(), expected);
         assert!(
@@ -472,7 +427,7 @@ fn scalar_utf8_errors_retain_causes_and_do_not_search_for_recovery() {
         (&b"<NAME:1>\xe2A"[..], 8..9, Some(1)),
         (&b"<NAME:1>\xe2\x82"[..], 8..10, None),
     ] {
-        let mut parser = Parser::new(
+        let mut parser = StrictParser::new(
             bytes,
             ParseOpts {
                 encoding: ParseEncoding::Utf8,
@@ -514,7 +469,7 @@ fn public_syntax_errors_distinguish_missing_ends_and_bad_descriptors() {
         ),
         (&b"<NAME:1"[..], SyntaxErrorKind::MalformedDescriptor),
     ] {
-        let mut parser = Parser::new(bytes, ParseOpts::default());
+        let mut parser = StrictParser::new(bytes, ParseOpts::default());
         let error = next_error(&mut parser);
         assert!(
             matches!(error.kind(), StructuralErrorKind::Syntax { reason: actual } if *actual == reason),
@@ -527,7 +482,7 @@ fn public_syntax_errors_distinguish_missing_ends_and_bad_descriptors() {
 #[test]
 fn headers_distinguish_definitions_from_fields() {
     let bytes = b"P<PROGRAMID:1>A<USERDEF1:3:N>EPC<COMMENT:1>B<USERDEF2:19:E>SweaterSize,{S,M,L}<USERDEF3:15>ShoeSize,{5:20}<EOH><EPC:3>123<EOR>";
-    let mut parser = Parser::new(bytes, ParseOpts::default());
+    let mut parser = StrictParser::new(bytes, ParseOpts::default());
     let header = match next_section(&mut parser) {
         Section::Header(header) => header,
         other => panic!("expected header, got {other:?}"),
@@ -550,19 +505,21 @@ fn headers_distinguish_definitions_from_fields() {
     let sizes = definition(&header.entries()[3]);
     assert_eq!(
         sizes.constraint(),
-        Some(&qso_io::adif::adi::UserDefinitionConstraint::Enumeration(
-            ["S", "M", "L"].map(str::to_owned).to_vec()
-        ))
+        Some(
+            &qso_io::adif::adi::parser::strict::declarations::UserDefinitionConstraint::Enumeration(
+                ["S", "M", "L"].map(str::to_owned).to_vec()
+            )
+        )
     );
     let range = definition(&header.entries()[4]);
     assert_eq!(range.data_type(), None);
     assert!(
-        matches!(range.constraint(), Some(qso_io::adif::adi::UserDefinitionConstraint::Range {lower,upper}) if lower == &bigdecimal::BigDecimal::from(5) && upper == &bigdecimal::BigDecimal::from(20)),
+        matches!(range.constraint(), Some(qso_io::adif::adi::parser::strict::declarations::UserDefinitionConstraint::Range {lower,upper}) if lower == &bigdecimal::BigDecimal::from(5) && upper == &bigdecimal::BigDecimal::from(20)),
         "unexpected value: {:?}",
         range.constraint()
     );
     for entry in header.entries() {
-        if let qso_io::adif::adi::HeaderEntry::UserDefinition(def) = entry {
+        if let qso_io::adif::adi::parser::strict::header::HeaderEntry::UserDefinition(def) = entry {
             assert_eq!(&bytes[def.value_span()], def.raw_data());
             assert!(bytes[def.descriptor_span()].starts_with(b"<USERDEF"));
         }
@@ -578,9 +535,10 @@ fn headers_distinguish_definitions_from_fields() {
 
 #[test]
 fn values_preserve_absence_empty_contents_and_source_spelling() {
-    use qso_io::adif::{DataType, Value};
+    use qso_io::adif::DataType;
+    use qso_io::adif::value::Value;
     let bytes = b"<A:0><B:0:N><C:3>123<D:3:S>123<E:8:N>001.2300<EOR>";
-    let mut parser = Parser::new(bytes, ParseOpts::default());
+    let mut parser = StrictParser::new(bytes, ParseOpts::default());
     let rec = record(next_section(&mut parser));
     assert!(
         rec.field("X").is_none(),
@@ -616,10 +574,10 @@ fn values_preserve_absence_empty_contents_and_source_spelling() {
 
 #[test]
 fn composite_values_and_definitions_outlive_the_parser() {
-    use qso_io::adif::{Hemisphere, TimePrecision, Value};
+    use qso_io::adif::value::{Hemisphere, TimePrecision, Value};
     let bytes=b"P<USERDEF1:3:N>EPC<EOH><A:4:S>Jos\xe9<B:1:B>y<C:2:N>1.<D:8:D>20240229<E:4:T>1305<F:11:L>W122 30.125<EOR><E:6:T>130500<EPC:3>123<EOR>";
     let sections = {
-        let parser = Parser::new(
+        let parser = StrictParser::new(
             bytes,
             ParseOpts {
                 encoding: ParseEncoding::Latin1,
@@ -713,9 +671,9 @@ fn composite_values_and_definitions_outlive_the_parser() {
 
 #[test]
 fn latin1_declaration_error_uses_original_bytes_after_an_accent() {
-    use qso_io::adif::adi::UserDefinitionError;
+    use qso_io::adif::adi::parser::strict::declarations::UserDefinitionError;
     let bytes = b"P<PROGRAMID:1>A<USERDEF1:8:E>X\xe9,{A,\x85}<EOH>";
-    let mut parser = Parser::new(
+    let mut parser = StrictParser::new(
         bytes,
         ParseOpts {
             encoding: ParseEncoding::Latin1,
@@ -740,9 +698,10 @@ fn latin1_declaration_error_uses_original_bytes_after_an_accent() {
 
 #[test]
 fn inline_indicator_is_distinct_from_value_presence() {
-    use qso_io::adif::{DataType, Value};
+    use qso_io::adif::DataType;
+    use qso_io::adif::value::Value;
 
-    let mut parser = Parser::new(b"<X:0:N><EOR><X:3>123<EOR>", ParseOpts::default());
+    let mut parser = StrictParser::new(b"<X:0:N><EOR><X:3>123<EOR>", ParseOpts::default());
     let empty = record(next_section(&mut parser));
     let field = named(&empty, "X");
     assert_eq!(field.data_type(), Some(DataType::Number));
@@ -763,10 +722,11 @@ fn inline_indicator_is_distinct_from_value_presence() {
 
 #[test]
 fn document_rules_and_alternative_errors_are_available_to_consumers() {
-    use qso_io::adif::{DataType, Value};
+    use qso_io::adif::DataType;
+    use qso_io::adif::value::Value;
 
     let bytes = b"P<USERDEF1:5:N>SCORE<EOH><SCORE:3>123<APP_EXAMPLE_SCORE:1:N>1<EOR><APP_EXAMPLE_SCORE:1>2<EOR><CREDIT_GRANTED:8>AJA,NOPE<EOR>";
-    let mut parser = Parser::new(bytes, ParseOpts::default());
+    let mut parser = StrictParser::new(bytes, ParseOpts::default());
     drop(next_section(&mut parser));
     let first = record(next_section(&mut parser));
     assert_eq!(named(&first, "SCORE").data_type(), Some(DataType::Number));
@@ -885,14 +845,15 @@ fn alternate_subdivisions_dispatch_to_suffix_only_members() {
 
 #[test]
 fn sponsor_components_compose_with_award_lists_and_preserve_diagnostics() {
-    use qso_io::adif::{AwardSponsor, Value, ValueError};
+    use qso_io::adif::AwardSponsor;
+    use qso_io::adif::value::{Value, ValueError};
 
     let value = format!(
         "{}_PROGRAM_AWARD,cq_OTHER_UNKNOWN",
         AwardSponsor::Arrl.as_str()
     );
     let bytes = format!("<AWARD_GRANTED:{}>{value}<EOR>", value.len());
-    let mut parser = Parser::new(bytes.as_bytes(), ParseOpts::default());
+    let mut parser = StrictParser::new(bytes.as_bytes(), ParseOpts::default());
     let parsed = record(next_section(&mut parser));
     let award = named(&parsed, "AWARD_GRANTED");
     assert_eq!(award.text(), value);
@@ -905,7 +866,7 @@ fn sponsor_components_compose_with_award_lists_and_preserve_diagnostics() {
     let value = "arrl_PROGRAM_AWARD,NOPE_PROGRAM_AWARD";
     let descriptor = format!("<AWARD_GRANTED:{}>", value.len());
     let bytes = format!("{descriptor}{value}<EOR><CALL:1>X<EOR>");
-    let mut parser = Parser::new(bytes.as_bytes(), ParseOpts::default());
+    let mut parser = StrictParser::new(bytes.as_bytes(), ParseOpts::default());
     let error = next_error(&mut parser);
     assert!(
         matches!(error.kind(), StructuralErrorKind::InvalidValue {
@@ -918,4 +879,302 @@ fn sponsor_components_compose_with_award_lists_and_preserve_diagnostics() {
     assert_eq!(error.span(), start..start + "NOPE_".len(), "{error}");
     assert_eq!(&bytes.as_bytes()[error.span()], b"NOPE_");
     assert_exhausted(&mut parser);
+}
+
+#[test]
+fn strict_indicator_diagnostics_preserve_grammar_and_error_precedence() {
+    use std::error::Error;
+
+    for bytes in [
+        b"<X:0:N:extra><EOR>".as_slice(),
+        b"<X:0:N1><EOR>".as_slice(),
+    ] {
+        let mut parser = StrictParser::new(bytes, ParseOpts::default());
+        let error = next_error(&mut parser);
+        assert_eq!(error.span(), 6..7, "input {bytes:?}: {error:?}");
+        assert!(
+            matches!(
+                error.kind(),
+                StructuralErrorKind::Syntax {
+                    reason: SyntaxErrorKind::MalformedDescriptor
+                }
+            ),
+            "{error:?}"
+        );
+        assert!(
+            error.source().is_none(),
+            "malformed suffix should not become an unknown-type cause: {error:?}"
+        );
+        assert_exhausted(&mut parser);
+    }
+    let mut parser = StrictParser::new(b"<X:0:Z", ParseOpts::default());
+    let error = next_error(&mut parser);
+    assert_eq!(error.span(), 5..6);
+    assert!(
+        matches!(
+            error.kind(),
+            StructuralErrorKind::Syntax {
+                reason: SyntaxErrorKind::UnknownTypeIndicator
+            }
+        ),
+        "{error:?}"
+    );
+    assert!(
+        matches!(error.source().and_then(|e| e.downcast_ref::<qso_io::adif::DataTypeError>()),
+        Some(qso_io::adif::DataTypeError::UnknownTypeSpecifier(code)) if code == "Z")
+    );
+    assert_exhausted(&mut parser);
+}
+
+#[test]
+fn invalid_descriptor_names_retain_their_utf8_error_source() {
+    use std::error::Error;
+
+    let mut parser = StrictParser::new(b"<\xff:0><EOR>", ParseOpts::default());
+    let error = next_error(&mut parser);
+    assert_eq!(error.span(), 1..2);
+    let cause = error
+        .source()
+        .and_then(|e| e.downcast_ref::<std::string::FromUtf8Error>())
+        .expect("invalid UTF-8 name should retain its original FromUtf8Error");
+    assert_eq!(cause.as_bytes(), b"\xff");
+    assert_eq!(cause.utf8_error().valid_up_to(), 0);
+}
+
+#[test]
+fn invalid_declared_field_values_are_structural_errors() {
+    use qso_io::adif::value::ValueError;
+    for (bytes, reason, span) in [
+        (
+            &b"<QSO_DATE:8:D>20260230"[..],
+            ValueError::InvalidDate,
+            20..22,
+        ),
+        (
+            &b"<APP_TEST_VALUE:3:N>abc"[..],
+            ValueError::InvalidNumber,
+            20..21,
+        ),
+    ] {
+        let mut parser = StrictParser::new(bytes, ParseOpts::default());
+        let error = next_error(&mut parser);
+        assert_eq!(error.span(), span);
+        assert!(
+            matches!(error.kind(),error::StructuralErrorKind::InvalidValue {cause,..} if *cause==reason),
+            "unexpected value: {:?}",
+            error.kind()
+        );
+    }
+}
+
+#[test]
+fn decoding_failures_stop_before_following_fields() {
+    for (encoding, bytes, incomplete) in [
+        (
+            ParseEncoding::Ascii,
+            &b"<NAME:2>\xc3\xa9<NAME:3>Ray"[..],
+            false,
+        ),
+        (ParseEncoding::Ascii, &b"<NAME:1>\xff<NAME:3>Ray"[..], false),
+        (ParseEncoding::Utf8, &b"<NAME:1>\xff<NAME:3>Ray"[..], false),
+        (ParseEncoding::Utf8, &b"<NAME:1>\xc3<NAME:3>Ray"[..], true),
+    ] {
+        let mut parser = StrictParser::new(
+            bytes,
+            ParseOpts {
+                encoding,
+                field_length: LengthUnit::Bytes,
+            },
+        );
+        let error = next_error(&mut parser);
+        assert_eq!(error.span(), 8..9);
+        match (encoding, error.kind()) {
+            (
+                ParseEncoding::Ascii,
+                error::StructuralErrorKind::Decoding {
+                    cause: DecodeError::NonAscii { offset },
+                },
+            ) => assert_eq!(*offset, 0),
+            (
+                ParseEncoding::Utf8,
+                error::StructuralErrorKind::Decoding {
+                    cause: DecodeError::Utf8(cause),
+                },
+            ) => {
+                assert_eq!(cause.valid_up_to(), 0);
+                assert_eq!(cause.error_len(), if incomplete { None } else { Some(1) });
+            }
+            other => panic!("{other:?}"),
+        }
+        assert_exhausted(&mut parser);
+    }
+}
+
+#[test]
+fn non_ascii_errors_locate_the_first_offending_byte_in_the_original_document() {
+    for unit in [LengthUnit::Bytes, LengthUnit::UnicodeScalars] {
+        for (raw, expected_offset, document_offset) in [
+            (&b"\x80AB\xff"[..], 0, 19),
+            (&b"A\x80B\xff"[..], 1, 20),
+            (&b"ABC\xff"[..], 3, 22),
+            (&b"A\xc3\xa9!"[..], 1, 20),
+        ] {
+            let mut bytes = b"<CALL:3>Ray<NAME:4>".to_vec();
+            bytes.extend_from_slice(raw);
+            bytes.extend_from_slice(b"<QTH:3>Ann<EOR>");
+            let mut parser = StrictParser::new(
+                &bytes,
+                ParseOpts {
+                    encoding: ParseEncoding::Ascii,
+                    field_length: unit,
+                },
+            );
+            let error = next_error(&mut parser);
+            assert_eq!(error.span(), document_offset..document_offset + 1);
+            assert!(
+                matches!(error.kind(),error::StructuralErrorKind::Decoding {
+                cause:DecodeError::NonAscii { offset }
+            } if *offset == expected_offset),
+                "unexpected value: {:?}",
+                error.kind()
+            );
+            assert_exhausted(&mut parser);
+        }
+    }
+}
+
+#[test]
+fn byte_lengths_splitting_a_utf8_scalar_fail_at_the_bounded_sequence() {
+    let mut parser = StrictParser::new(
+        "<NAME:4>José<EOR>".as_bytes(),
+        ParseOpts {
+            encoding: ParseEncoding::Utf8,
+            field_length: LengthUnit::Bytes,
+        },
+    );
+    let error = next_error(&mut parser);
+    assert_eq!(error.span(), 11..12);
+    let error::StructuralErrorKind::Decoding {
+        cause: DecodeError::Utf8(cause),
+    } = error.kind()
+    else {
+        panic!("{error:?}")
+    };
+    assert_eq!(cause.valid_up_to(), 3);
+    assert_eq!(cause.error_len(), None);
+    assert_exhausted(&mut parser);
+}
+
+#[test]
+fn header_decoding_errors_are_terminal_with_relative_causes() {
+    for encoding in [ParseEncoding::Ascii, ParseEncoding::Utf8] {
+        let mut parser = StrictParser::new(
+            b"Generated \xff\n<EOH><NAME:3>Ray<EOR>",
+            ParseOpts {
+                encoding,
+                field_length: LengthUnit::Bytes,
+            },
+        );
+        let error = next_error(&mut parser);
+        assert_eq!(error.span(), 10..11);
+        match (encoding, error.kind()) {
+            (
+                ParseEncoding::Ascii,
+                error::StructuralErrorKind::Decoding {
+                    cause: DecodeError::NonAscii { offset },
+                },
+            ) => assert_eq!(*offset, 10),
+            (
+                ParseEncoding::Utf8,
+                error::StructuralErrorKind::Decoding {
+                    cause: DecodeError::Utf8(cause),
+                },
+            ) => assert_eq!(cause.valid_up_to(), 10),
+            other => panic!("{other:?}"),
+        }
+        assert_exhausted(&mut parser);
+    }
+    let file = parse_file(
+        b"Jos\xe9<EOH><NAME:3>Ray<EOR>",
+        ParseEncoding::Latin1,
+        LengthUnit::Bytes,
+    );
+    assert_eq!(
+        file.header
+            .expect("input should yield a header because it starts with a preamble")
+            .text(),
+        "José"
+    );
+}
+
+#[test]
+fn structural_errors_have_typed_categories_and_original_locations() {
+    use qso_io::adif::adi::parser::error::{StructuralErrorKind, SyntaxErrorKind};
+    for (bytes, reason, span) in [
+        (
+            &b"<NAME:x>Ray<EOR>"[..],
+            SyntaxErrorKind::InvalidLength,
+            6..7,
+        ),
+        (
+            &b"<NAME:3:Z>Ray<EOR>"[..],
+            SyntaxErrorKind::UnknownTypeIndicator,
+            8..9,
+        ),
+        (&b"<NAME:3>Ray"[..], SyntaxErrorKind::MissingEor, 11..11),
+        (&b"P<NAME:1>A"[..], SyntaxErrorKind::MissingEoh, 10..10),
+    ] {
+        let mut parser = StrictParser::new(bytes, ParseOpts::default());
+        let error = next_error(&mut parser);
+        assert_exhausted(&mut parser);
+        assert_eq!(error.span(), span);
+        assert!(
+            matches!(error.kind(), StructuralErrorKind::Syntax { reason: actual } if *actual == reason),
+            "input {bytes:?}: expected {reason:?}, got {error:?}"
+        );
+    }
+    let bytes = format!("<NAME:{}0>", usize::MAX);
+    let mut parser = StrictParser::new(bytes.as_bytes(), ParseOpts::default());
+    let error = next_error(&mut parser);
+    assert_exhausted(&mut parser);
+    assert!(
+        matches!(
+            error.kind(),
+            StructuralErrorKind::Syntax {
+                reason: SyntaxErrorKind::LengthOverflow
+            }
+        ),
+        "unexpected value: {:?}",
+        error.kind()
+    );
+    assert!(std::error::Error::source(&error).is_some());
+}
+
+#[test]
+fn scalar_utf8_errors_retain_the_standard_cause_and_sequence_span() {
+    use qso_io::adif::adi::parser::error::StructuralErrorKind;
+    for (bytes, span, error_len) in [
+        (&b"<NAME:1>\xe2A"[..], 8..9, Some(1)),
+        (&b"<NAME:1>\xe2\x82"[..], 8..10, None),
+        (&b"<NAME:1>\xff"[..], 8..9, Some(1)),
+    ] {
+        let mut parser = StrictParser::new(
+            bytes,
+            ParseOpts {
+                encoding: ParseEncoding::Utf8,
+                field_length: LengthUnit::UnicodeScalars,
+            },
+        );
+        let error = next_error(&mut parser);
+        assert_exhausted(&mut parser);
+        assert_eq!(error.span(), span);
+        let StructuralErrorKind::Decoding {
+            cause: DecodeError::Utf8(cause),
+        } = error.kind()
+        else {
+            panic!("{error:?}");
+        };
+        assert_eq!(cause.error_len(), error_len);
+        assert_eq!(cause.valid_up_to(), 0);
+    }
 }

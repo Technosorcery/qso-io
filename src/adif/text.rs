@@ -1,6 +1,6 @@
 use std::ops::Range;
 
-use super::ParseEncoding;
+use super::adi::parser::options::ParseEncoding;
 
 pub(crate) fn check_text(
     bytes: &[u8],

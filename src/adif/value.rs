@@ -1,3 +1,5 @@
+//! ADIF field-value representations and conversion failure categories.
+
 use std::borrow::Cow;
 
 use bigdecimal::{BigDecimal, num_bigint::BigInt};
