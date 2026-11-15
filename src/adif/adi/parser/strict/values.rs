@@ -1,13 +1,15 @@
 use std::mem;
+use std::ops::Range;
 
 use bigdecimal::num_bigint::BigInt;
 use chrono::{NaiveDate, NaiveTime};
 
-use super::*;
-use crate::adif::{
-    AdifLocation, AdifTime, Hemisphere, TimePrecision, Value, ValueError, number::parse_number,
-    text::check_text,
-};
+use super::super::{error::AdiError, framing::field::PermissiveField, options::ParseEncoding};
+use super::decoding_error;
+use super::field::{Field, strict_specifier};
+use crate::adif::DataType;
+use crate::adif::value::{AdifLocation, AdifTime, Hemisphere, TimePrecision, Value, ValueError};
+use crate::adif::{number::parse_number, text::check_text};
 
 mod identifiers;
 mod lists;
@@ -59,10 +61,11 @@ fn width(bytes: &[u8], size: usize) -> std::result::Result<(), Range<usize>> {
 }
 
 pub(super) fn parse<'a>(
-    f: FramedField<'a>,
+    f: PermissiveField<'a>,
     resolved_type: Option<DataType>,
     encoding: ParseEncoding,
 ) -> std::result::Result<Field<'a>, AdiError> {
+    let specifier = strict_specifier(f.specifier, f.descriptor_span.clone())?;
     let raw = f.raw_data;
     let fail = |cause, span: Range<usize>, numeric_cause| AdiError::InvalidValue {
         field_name: f.specifier.name.to_string(),
@@ -72,7 +75,9 @@ pub(super) fn parse<'a>(
         enumeration: None,
     };
 
-    let mut text = f.text;
+    let mut text = f
+        .text
+        .map_err(|cause| decoding_error(raw, f.value_span.start, cause))?;
     let value = if raw.is_empty() {
         None
     } else {
@@ -290,7 +295,7 @@ pub(super) fn parse<'a>(
     };
 
     Ok(Field {
-        specifier: f.specifier,
+        specifier,
         data_type: resolved_type,
         raw_data: raw,
         descriptor_span: f.descriptor_span,

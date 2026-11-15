@@ -614,7 +614,7 @@ impl StandardField {
 
     /// Declared data types, with the current export type first.
     ///
-    /// CREDIT fields additionally accept the legacy AwardList type on import.
+    /// For CREDIT fields, the list includes the legacy import type AwardList.
     /// A field's declared type does not encode its additional semantic limits.
     pub fn data_types(self) -> &'static [DataType] {
         match self {

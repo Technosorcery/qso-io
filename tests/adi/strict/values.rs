@@ -1,7 +1,17 @@
 use super::*;
-use crate::adif::{Hemisphere, TimePrecision, Value, ValueError};
+use qso_io::adif::value::{Hemisphere, TimePrecision, Value, ValueError};
 
 fn document(raw: &[u8], kind: Option<char>, encoding: ParseEncoding, unit: LengthUnit) -> Vec<u8> {
+    named_document("X", raw, kind, encoding, unit)
+}
+
+fn named_document(
+    name: &str,
+    raw: &[u8],
+    kind: Option<char>,
+    encoding: ParseEncoding,
+    unit: LengthUnit,
+) -> Vec<u8> {
     let length = if encoding == ParseEncoding::Utf8 && unit == LengthUnit::UnicodeScalars {
         std::str::from_utf8(raw)
             .expect(
@@ -13,7 +23,7 @@ fn document(raw: &[u8], kind: Option<char>, encoding: ParseEncoding, unit: Lengt
         raw.len()
     };
     let kind = kind.map(|c| format!(":{c}")).unwrap_or_default();
-    let mut bytes = format!("<X:{length}{kind}>").into_bytes();
+    let mut bytes = format!("<{name}:{length}{kind}>").into_bytes();
     bytes.extend_from_slice(raw);
     bytes.extend_from_slice(b"<EOR>");
     bytes
@@ -30,7 +40,7 @@ fn failure(raw: &[u8], kind: char, reason: ValueError, relative: Range<usize>) {
         + 1;
     bytes.append(&mut bad);
     bytes.extend_from_slice(b"<X:1>C<EOR>");
-    let mut parser = Parser::new(&bytes, ParseOpts::default());
+    let mut parser = StrictParser::new(&bytes, ParseOpts::default());
     let _ = next_section(&mut parser);
     let error = next_error(&mut parser);
     assert!(
@@ -46,22 +56,6 @@ fn failure(raw: &[u8], kind: char, reason: ValueError, relative: Range<usize>) {
     assert_exhausted(&mut parser);
 }
 
-fn resolved_value<'a>(
-    bytes: &'a [u8],
-    kind: DataType,
-) -> std::result::Result<Field<'a>, StructuralError> {
-    let mut input = ascii_stream(bytes);
-    let framed = parse_ok(framed_field, &mut input);
-    crate::adif::adi::parser::values::parse(framed, Some(kind), input.state.parser_options.encoding)
-        .map_err(|error| {
-            StructuralError::from_context(
-                ContextError::from_external_error(&input, error),
-                input.current_token_start(),
-                bytes.len(),
-            )
-        })
-}
-
 #[test]
 fn invalid_declared_values_are_terminal() {
     for bytes in [
@@ -70,7 +64,7 @@ fn invalid_declared_values_are_terminal() {
         &b"<X:4:T>2400<EOR>"[..],
         &b"<X:1:S>\t<EOR>"[..],
     ] {
-        let mut parser = Parser::new(bytes, ParseOpts::default());
+        let mut parser = StrictParser::new(bytes, ParseOpts::default());
         let _ = next_error(&mut parser);
         assert_exhausted(&mut parser);
     }
@@ -354,7 +348,7 @@ fn declared_text_uses_encoding_specific_rules() {
                     (Some('E'), string[mode]),
                 ] {
                     let bytes = document(raw, indicator, encoding, unit);
-                    let result = Parser::new(
+                    let result = StrictParser::new(
                         &bytes,
                         ParseOpts {
                             encoding,
@@ -392,7 +386,7 @@ fn declared_text_uses_encoding_specific_rules() {
                 ] {
                     for indicator in [None, Some('S'), Some('M'), Some('E')] {
                         let bytes = document(raw, indicator, encoding, unit);
-                        let result = Parser::new(
+                        let result = StrictParser::new(
                             &bytes,
                             ParseOpts {
                                 encoding,
@@ -426,7 +420,7 @@ fn numeric_grammars_remain_ascii_in_utf8_mode() {
             let start = bytes.iter().position(|b| *b == b'>').expect(
                 "descriptor should contain > because the test generator appends that delimiter",
             ) + 1;
-            let mut parser = Parser::new(
+            let mut parser = StrictParser::new(
                 &bytes,
                 ParseOpts {
                     encoding: ParseEncoding::Utf8,
@@ -449,23 +443,25 @@ fn numeric_grammars_remain_ascii_in_utf8_mode() {
 
 #[test]
 fn integer_types_preserve_magnitude_and_spelling() {
-    for (kind, text, expected) in [
-        (DataType::Integer, "-000123", "-123"),
+    for (name, kind, text, expected) in [
+        ("SFI", DataType::Integer, "-000123", "-123"),
         (
+            "SFI",
             DataType::Integer,
             "1234567890123456789012345678901234567890",
             "1234567890123456789012345678901234567890",
         ),
-        (DataType::PositiveInteger, "0001", "1"),
+        ("TEN_TEN", DataType::PositiveInteger, "0001", "1"),
     ] {
-        let bytes = document(
+        let bytes = named_document(
+            name,
             text.as_bytes(),
             None,
             ParseEncoding::Ascii,
             LengthUnit::Bytes,
         );
-        let field =
-            resolved_value(&bytes, kind).unwrap_or_else(|e| panic!("{kind:?} {text:?}: {e}"));
+        let field = parsed_field(&bytes, name, ParseEncoding::Ascii, LengthUnit::Bytes)
+            .unwrap_or_else(|e| panic!("{kind:?} {text:?}: {e}"));
         assert!(
             matches!(field.value(), Some(Value::Integer(n)) if n.to_string() == expected),
             "{field:?}"
@@ -473,17 +469,18 @@ fn integer_types_preserve_magnitude_and_spelling() {
         assert_eq!(field.text(), text);
     }
     for (text, relative) in [("0", 0..1), ("-1", 0..1), ("+1", 0..1), ("1.0", 1..2)] {
-        let bytes = document(
+        let bytes = named_document(
+            "TEN_TEN",
             text.as_bytes(),
             None,
             ParseEncoding::Ascii,
             LengthUnit::Bytes,
         );
-        let error = resolved_value(&bytes, DataType::PositiveInteger)
+        let error = parsed_field(&bytes, "TEN_TEN", ParseEncoding::Ascii, LengthUnit::Bytes)
             .expect_err("invalid PositiveInteger should fail");
         assert_eq!(
             error.span(),
-            5 + relative.start..5 + relative.end,
+            11 + relative.start..11 + relative.end,
             "{text}: {error:?}"
         );
     }
@@ -491,34 +488,44 @@ fn integer_types_preserve_magnitude_and_spelling() {
 
 #[test]
 fn identifier_types_enforce_only_the_defined_grammar() {
-    for (kind, text) in [
-        (DataType::GridSquare, "FN01mh42"),
-        (DataType::GridSquareExt, "BQ12"),
-        (DataType::IOTARefNo, "EU-001"),
-        (DataType::POTARef, "K-4562@US-CA"),
-        (DataType::WWFFRef, "3DAFF-0002"),
+    for (name, kind, text) in [
+        ("GRIDSQUARE", DataType::GridSquare, "FN01mh42"),
+        ("GRIDSQUARE_EXT", DataType::GridSquareExt, "BQ12"),
+        ("IOTA", DataType::IOTARefNo, "EU-001"),
+        ("POTA_REF", DataType::POTARefList, "K-4562@US-CA"),
+        ("WWFF_REF", DataType::WWFFRef, "3DAFF-0002"),
     ] {
-        let bytes = document(
+        let bytes = named_document(
+            name,
             text.as_bytes(),
             None,
             ParseEncoding::Ascii,
             LengthUnit::Bytes,
         );
-        let field = resolved_value(&bytes, kind).unwrap_or_else(|e| panic!("{kind:?} {text}: {e}"));
-        assert!(
-            matches!(field.value(), Some(Value::Text(t)) if t == text),
-            "{field:?}"
-        );
+        let field = parsed_field(&bytes, name, ParseEncoding::Ascii, LengthUnit::Bytes)
+            .unwrap_or_else(|e| panic!("{kind:?} {text}: {e}"));
+        if kind == DataType::POTARefList {
+            assert!(
+                matches!(field.value(), Some(Value::List(items)) if items.len()==1 && items[0]==text),
+                "{field:?}"
+            );
+        } else {
+            assert!(
+                matches!(field.value(), Some(Value::Text(t)) if t == text),
+                "{field:?}"
+            );
+        }
         assert_eq!(field.data_type(), Some(kind));
     }
-    for (kind, text, relative) in [
-        (DataType::GridSquare, "SN01", 0..1),
-        (DataType::GridSquareExt, "BZ", 1..2),
-        (DataType::IOTARefNo, "EU-000", 3..6),
-        (DataType::WWFFRef, "KFF-00a1", 6..7),
-        (DataType::POTARef, "K-12x4", 4..5),
+    for (name, kind, text, relative) in [
+        ("GRIDSQUARE", DataType::GridSquare, "SN01", 0..1),
+        ("GRIDSQUARE_EXT", DataType::GridSquareExt, "BZ", 1..2),
+        ("IOTA", DataType::IOTARefNo, "EU-000", 3..6),
+        ("WWFF_REF", DataType::WWFFRef, "KFF-00a1", 6..7),
+        ("POTA_REF", DataType::POTARefList, "K-12x4", 4..5),
     ] {
-        let bytes = document(
+        let bytes = named_document(
+            name,
             text.as_bytes(),
             None,
             ParseEncoding::Ascii,
@@ -529,7 +536,8 @@ fn identifier_types_enforce_only_the_defined_grammar() {
             .position(|b| *b == b'>')
             .expect("test descriptor should contain >")
             + 1;
-        let error = resolved_value(&bytes, kind).expect_err("invalid reference should fail");
+        let error = parsed_field(&bytes, name, ParseEncoding::Ascii, LengthUnit::Bytes)
+            .expect_err("invalid reference should fail");
         assert!(
             matches!(
                 error.kind(),
@@ -548,28 +556,30 @@ fn identifier_types_enforce_only_the_defined_grammar() {
 #[test]
 fn sota_checks_do_not_invent_a_reference_number_grammar() {
     for text in ["G/LD-3", "A/Anything"] {
-        let bytes = document(
+        let bytes = named_document(
+            "SOTA_REF",
             text.as_bytes(),
             None,
             ParseEncoding::Ascii,
             LengthUnit::Bytes,
         );
-        let field =
-            resolved_value(&bytes, DataType::SOTARef).unwrap_or_else(|e| panic!("{text}: {e}"));
+        let field = parsed_field(&bytes, "SOTA_REF", ParseEncoding::Ascii, LengthUnit::Bytes)
+            .unwrap_or_else(|e| panic!("{text}: {e}"));
         assert_eq!(field.text(), text);
     }
     for (text, relative) in [("G", 1..1), ("G/", 2..2), ("/G", 0..0)] {
-        let bytes = document(
+        let bytes = named_document(
+            "SOTA_REF",
             text.as_bytes(),
             None,
             ParseEncoding::Ascii,
             LengthUnit::Bytes,
         );
-        let error = resolved_value(&bytes, DataType::SOTARef)
+        let error = parsed_field(&bytes, "SOTA_REF", ParseEncoding::Ascii, LengthUnit::Bytes)
             .expect_err("missing SOTA component should fail");
         assert_eq!(
             error.span(),
-            5 + relative.start..5 + relative.end,
+            12 + relative.start..12 + relative.end,
             "{text}: {error:?}"
         );
     }

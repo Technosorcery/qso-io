@@ -1,11 +1,14 @@
+//! Located syntax, decoding, and strict-conversion diagnostics.
+
 use std::{error::Error as StdError, fmt, num::ParseIntError, ops::Range};
 
 use thiserror::Error;
 use winnow::error::{ContextError, StrContext, StrContextValue};
 
-use crate::adif::{
-    DataType, DataTypeError, DecodeError, LengthUnit, ValueError, adi::UserDefinitionError,
-};
+use crate::adif::adi::parser::options::LengthUnit;
+use crate::adif::adi::parser::strict::declarations::UserDefinitionError;
+use crate::adif::value::ValueError;
+use crate::adif::{DataType, DataTypeError, DecodeError};
 
 /// The syntactic requirement that an ADI input failed to satisfy.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -24,6 +27,8 @@ pub enum SyntaxErrorKind {
     MissingEor,
     /// The supplied field-name bytes are not valid UTF-8.
     InvalidNameEncoding,
+    /// The supplied inline-indicator bytes are not valid UTF-8.
+    InvalidIndicatorEncoding,
 }
 
 /// The kind of an ADI parsing error.
@@ -47,7 +52,7 @@ pub enum StructuralErrorKind {
         /// Original constraint envelope, including braces.
         constraint_span: Range<usize>,
         /// Constraint-specific reason, retaining exact bounds when relevant.
-        cause: crate::adif::adi::UserDefinitionValueError,
+        cause: crate::adif::adi::parser::strict::declarations::UserDefinitionValueError,
     },
     /// An inline indicator conflicts with the field's defined type.
     TypeConflict {
@@ -253,6 +258,15 @@ impl StructuralError {
                     AdiError::Decoding { span, cause } => {
                         (StructuralErrorKind::Decoding { cause }, span, None)
                     }
+                    AdiError::DescriptorEncoding {
+                        reason,
+                        span,
+                        cause,
+                    } => (
+                        StructuralErrorKind::Syntax { reason },
+                        span,
+                        Some(Box::new(cause) as _),
+                    ),
                     AdiError::Syntax {
                         reason,
                         span,
@@ -390,6 +404,7 @@ impl fmt::Display for StructuralErrorKind {
                     SyntaxErrorKind::MissingEoh => "expected <EOH> before EOF",
                     SyntaxErrorKind::MissingEor => "expected <EOR> before EOF",
                     SyntaxErrorKind::InvalidNameEncoding => "invalid UTF-8 in field name",
+                    SyntaxErrorKind::InvalidIndicatorEncoding => "invalid UTF-8 in type indicator",
                 }
             ),
             StructuralErrorKind::TruncatedValue {
@@ -499,6 +514,13 @@ pub(super) enum AdiError {
         span: Range<usize>,
         #[source]
         cause: DecodeError,
+    },
+    #[error("invalid descriptor encoding: {cause}")]
+    DescriptorEncoding {
+        reason: SyntaxErrorKind,
+        span: Range<usize>,
+        #[source]
+        cause: std::string::FromUtf8Error,
     },
     #[error("invalid field length: {reason:?}")]
     Syntax {

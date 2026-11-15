@@ -1,636 +1,156 @@
-use std::{borrow::Cow, collections::HashMap, ops::Range};
+//! Strict and permissive parsing of length-delimited ADI input.
+//!
+//! [`strict::StrictParser`] reads complete ADI sections with typed values and the
+//! crate's supported ADIF checks. [`permissive::PermissiveParser`] reads complete
+//! sections without interpreting field contents or document declarations.
+//! Both preserve original bytes and source locations and use [`ParseOpts`](crate::adif::adi::parser::options::ParseOpts)
+//! for explicit encoding and length interpretation.
+//!
+//! Permissive results retain duplicate fields, unchecked UTF-8 indicators, and
+//! cached decoding errors when value boundaries are known. Strict decoding and
+//! type failures terminate iteration. Invalid framing is terminal for both
+//! parsers; previously yielded sections remain available.
+//!
+//! Single-match lookup returns `Result<Option<_>, adi::lookup::LookupError>`: absence
+//! is `Ok(None)`, and multiple matching descriptors produce an ambiguity error
+//! containing every matching descriptor span. `fields_named()` iterates over
+//! matches in source order. Names use ASCII case-insensitive comparison.
+//!
+//! [`StandardField`](crate::adif::StandardField) describes standard field definitions. Reference types such
+//! as [`AntPath`](crate::adif::AntPath), [`ArrlSection`](crate::adif::ArrlSection), [`Band`](crate::adif::Band) and [`DxccEntity`](crate::adif::DxccEntity) describe enumeration
+//! identities and their metadata; parser membership checks use these same types.
+//!
+//! # Permissive contents
+//!
+//! Permissive fields expose cached `text() -> Result<&str, &DecodeError>` and
+//! `raw_data()` without typed-value conversion. An empty supplied value has
+//! empty raw bytes and `Ok("")` text. An absent indicator is `None`; an explicitly
+//! empty indicator is `Some("")`. Header preambles follow the same decoding rule.
+//! UTF-8 names and indicators are independent of the selected value encoding.
+//!
+//! ```
+//! use qso_io::adif::adi::parser::options::{ParseOpts};
+//! use qso_io::adif::adi::parser::permissive::{PermissiveParser, PermissiveSection};
+//! # fn main() -> Result<(), Box<dyn std::error::Error>> {
+//! let mut parser = PermissiveParser::new(b"<K_INDEX:4>1.33<EOR>", ParseOpts::default());
+//! let record = match parser.next() {
+//!     Some(Ok(PermissiveSection::Record(record))) => record,
+//!     other => panic!("expected the supplied complete record, got {other:?}"),
+//! };
+//! let field = record.field("K_INDEX")?
+//!     .expect("record should contain K_INDEX because the input supplies that descriptor");
+//! assert_eq!(field.text().map_err(Clone::clone)?, "1.33");
+//! assert_eq!(field.raw_data(), b"1.33");
+//! // Text is retained without asserting that it is an ADIF Integer.
+//! # Ok(())
+//! # }
+//! ```
+//!
+//! # Strict defined values
+//!
+//! Standard header and QSO fields use the bundled ADIF 3.1.8 definitions even
+//! when their inline indicators are omitted. USERDEF header declarations supply
+//! record-field types and constraints, taking precedence over application-field
+//! names. Application fields establish their type on first occurrence; later
+//! omitted indicators inherit it and explicit conflicts are terminal errors.
+//!
+//! [`Field::data_type`](crate::adif::adi::parser::strict::field::Field::data_type) reports the resolved type; [`Field::type_indicator`](crate::adif::adi::parser::strict::field::Field::type_indicator)
+//! reports only the supplied inline indicator. Unknown untyped fields retain
+//! decoded text. Supplied zero-length contents have no value and bypass value
+//! constraints, while descriptor consistency still applies. Lookup distinguishes
+//! an empty field from an absent field. Original spelling and bytes remain available.
+//!
+//! The catalog is fixed regardless of ADIF_VER. Membership checks use member data
+//! supplied by ADIF, retaining historical entries; country and QSO-date
+//! relationships belong to validation. Externally delegated sets, including DOKs,
+//! are not checked. Partial subdivision tables do not reject unlisted values.
+//! SOTA checks are limited to its text repertoire and a slash with nonempty
+//! portions; external reference assignments are not looked up.
+//!
+//! ```
+//! use qso_io::adif::adi::parser::options::{ParseOpts};
+//! use qso_io::adif::adi::parser::strict::{StrictParser, Section};
+//! use qso_io::adif::value::{Value};
+//! # fn main() -> Result<(), Box<dyn std::error::Error>> {
+//! let mut parser = StrictParser::new(b"<FREQ:6>14.074<NOTE:0><EOR>", ParseOpts::default());
+//! let record = match parser
+//!     .next()
+//!     .expect("example should yield a record because it supplies fields followed by EOR")?
+//! {
+//!     Section::Record(record) => record,
+//!     other => panic!("expected record, got {other:?}"),
+//! };
+//! let frequency = record
+//!     .field("freq")?
+//!     .expect("record should contain FREQ from the supplied descriptor");
+//! assert_eq!(frequency.data_type(), Some(qso_io::adif::DataType::Number));
+//! assert_eq!(frequency.type_indicator(), None);
+//! assert!(matches!(frequency.value(), Some(Value::Number(_))), "expected Number, got {:?}", frequency.value());
+//! assert_eq!(frequency.text(), "14.074");
+//! assert!(
+//!     record
+//!         .field("NOTE")?
+//!         .expect("record should contain NOTE because the example supplies <NOTE:0>")
+//!         .value()
+//!         .is_none()
+//! );
+//! assert!(record.field("MISSING")?.is_none());
+//! # Ok(())
+//! # }
+//! ```
+//!
+//! # Strict declared text and encodings
+//!
+//! For strict parsing, [`ParseOpts::encoding`](crate::adif::adi::parser::options::ParseOpts::encoding) selects decoding and the character
+//! repertoire for declared String (`S`), MultilineString (`M`) and Enumeration
+//! (`E`) values. These are qso-io's explicit compatibility rules:
+//!
+//! | Encoding | String and Enumeration | MultilineString |
+//! | --- | --- | --- |
+//! | ASCII | U+0020–U+007E | Same characters plus CRLF pairs |
+//! | Latin-1 | U+0020–U+007E and U+00A0–U+00FF | Same characters plus CRLF pairs |
+//! | UTF-8 | Valid Unicode except CR and LF | Same characters plus CRLF pairs |
+//!
+//! Strict parsing with all encodings rejects lone CR/LF in MultilineString. UTF-8 permits other controls,
+//! including TAB, NUL, DEL and C1; ASCII and Latin-1 use the narrower ranges
+//! above. The UTF-8 compatibility rule follows ADIF's international-text
+//! definitions. The `I` and `G` indicators themselves are unavailable in ADI.
+//! Unresolved untyped contents use decoding alone. USERDEF enumeration members use
+//! the String rules above, retaining each member's spelling and order.
+//!
+//! # User-field declarations
+//!
+//! Strict headers expose fields and USERDEFn declarations through
+//! `entries()`. A declaration describes a record field; its optional indicator
+//! and parsed constraints are retained separately from its original text.
+//!
+//! ```
+//! use qso_io::adif::{ DataType};
+//! use qso_io::adif::adi::parser::options::{ParseOpts};
+//! use qso_io::adif::adi::parser::strict::header::{HeaderEntry};
+//! use qso_io::adif::adi::parser::strict::{StrictParser, Section};
+//! # fn main() -> Result<(), Box<dyn std::error::Error>> {
+//! let mut parser = StrictParser::new(b"P<USERDEF1:3:N>EPC<EOH>", ParseOpts::default());
+//! let header = match parser
+//!     .next()
+//!     .expect("example should yield a header because it starts with a preamble")?
+//! {
+//!     Section::Header(header) => header,
+//!     other => panic!("expected header, got {other:?}"),
+//! };
+//! let definition = match &header.entries()[0] {
+//!     HeaderEntry::UserDefinition(definition) => definition,
+//!     other => panic!("expected USERDEF declaration, got {other:?}"),
+//! };
+//! assert_eq!(definition.field_name(), "EPC");
+//! assert_eq!(definition.data_type(), Some(DataType::Number));
+//! assert_eq!(definition.text(), "EPC");
+//! # Ok(())
+//! # }
+//! ```
 
-use winnow::{
-    LocatingSlice, Parser as _, Result, Stateful,
-    ascii::{Caseless, digit1, line_ending},
-    combinator::{eof, not, opt, preceded, repeat_till, seq, terminated},
-    error::{ContextError, FromExternalError, StrContext, StrContextValue},
-    stream::{AsChar, Location, Stream as _},
-    token::{take_till, take_until, take_while},
-};
-
-use crate::adif::{
-    DataSpecifier, DataType, DecodeError, Field, FieldSection, LengthUnit, ParseEncoding,
-    ParseOpts,
-    adi::{Header, HeaderEntry, Record, Section, parser::error::AdiError},
-};
-
-mod declarations;
-mod definitions;
-pub(super) mod error;
-#[cfg(test)]
-mod tests;
-mod values;
-
-#[derive(Debug, Default)]
-struct State {
-    parser_options: ParseOpts,
-    user_definitions: HashMap<String, definitions::UserFieldRule>,
-    application_types: HashMap<String, definitions::EstablishedApplicationType>,
-}
-
-type Stream<'is> = Stateful<LocatingSlice<&'is [u8]>, State>;
-
-#[derive(Debug, PartialEq, Eq)]
-enum Phase {
-    Start,
-    Records,
-    Finished,
-}
-
-/// Reads complete ADI sections from a borrowed byte slice.
-///
-/// Earlier sections remain usable if a later section fails. A structural error
-/// is yielded once, followed by permanent exhaustion. Decoding errors are
-/// terminal, including in field values and header preambles. Resolved standard,
-/// USERDEF and application-field types are validated before a section is yielded.
-/// Document rules belong to this parser independently of returned headers.
-///
-/// Historical enumeration members are accepted independently of QSO-date
-/// applicability. Primary subdivision membership spans the supplied country
-/// groups independently of record DXCC, without identifying or inferring a
-/// country. Recommended enumerations for String fields such as CONTEST_ID remain
-/// advisory during parsing.
-///
-/// Decoding rejects invalid input without replacement. ASCII failures identify
-/// the first non-ASCII byte; UTF-8 failures identify the invalid or incomplete
-/// sequence. Byte-length values are framed before decoding, while UTF-8 scalar
-/// lengths require valid scalar traversal to locate the value boundary.
-///
-/// A nonempty input whose first byte is not `<` starts with a header preamble
-/// and requires an EOH terminator. Input starting with `<` is parsed as records
-/// without a header. Text between fields or sections is ignored up to the next
-/// `<`; declared field-value lengths take precedence over embedded delimiters.
-///
-/// ```
-/// use qso_io::adif::{adi::{Parser, Section}, ParseOpts, ParseEncoding, LengthUnit};
-/// # fn main() -> Result<(), Box<dyn std::error::Error>> {
-/// let options = ParseOpts { encoding: ParseEncoding::Latin1, field_length: LengthUnit::Bytes };
-/// let mut parser = Parser::new(b"<CALL:4>W1AW<EOR>", options);
-/// let record = match parser
-///     .next()
-///     .expect("example should yield a record because it supplies CALL followed by EOR")?
-/// {
-///     Section::Record(record) => record,
-///     other => panic!("expected record, got {other:?}"),
-/// };
-/// assert_eq!(
-///     record
-///         .field("call")
-///         .expect("record should contain CALL from the supplied descriptor")
-///         .text(),
-///     "W1AW"
-/// );
-/// assert!(parser.next().is_none());
-/// # Ok(())
-/// # }
-/// ```
-#[derive(Debug)]
-pub struct Parser<'a> {
-    input: Stream<'a>,
-    input_len: usize,
-    phase: Phase,
-}
-
-impl<'a> Parser<'a> {
-    /// Constructs a parser using the supplied input and options.
-    ///
-    /// Parsing begins when the iterator advances.
-    pub fn new(input: &'a [u8], options: ParseOpts) -> Self {
-        Self {
-            input: Stateful {
-                input: LocatingSlice::new(input),
-                state: State {
-                    parser_options: options,
-                    ..State::default()
-                },
-            },
-            input_len: input.len(),
-            phase: Phase::Start,
-        }
-    }
-
-    fn next_section(&mut self) -> Result<Option<Section<'a>>> {
-        if self.phase == Phase::Start {
-            self.phase = Phase::Records;
-            if self.input.peek_token().is_some_and(|byte| byte != b'<') {
-                return header
-                    .parse_next(&mut self.input)
-                    .map(Section::Header)
-                    .map(Some);
-            }
-        }
-        take_till(0.., b'<').void().parse_next(&mut self.input)?;
-        if self.input.peek_token().is_none() {
-            return Ok(None);
-        }
-        record
-            .parse_next(&mut self.input)
-            .map(Section::Record)
-            .map(Some)
-    }
-}
-
-impl<'a> Iterator for Parser<'a> {
-    type Item = std::result::Result<Section<'a>, error::StructuralError>;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        if self.phase == Phase::Finished {
-            return None;
-        }
-        match self.next_section() {
-            Ok(Some(section)) => Some(Ok(section)),
-            Ok(None) => {
-                self.phase = Phase::Finished;
-                None
-            }
-            Err(context) => {
-                self.phase = Phase::Finished;
-                Some(Err(error::StructuralError::from_context(
-                    context,
-                    self.input.current_token_start(),
-                    self.input_len,
-                )))
-            }
-        }
-    }
-}
-
-impl std::iter::FusedIterator for Parser<'_> {}
-
-fn decode_text<'a>(bytes: &'a [u8], encoding: ParseEncoding) -> Result<Cow<'a, str>, DecodeError> {
-    match encoding {
-        ParseEncoding::Ascii => {
-            if let Some(offset) = bytes.iter().position(|byte| !byte.is_ascii()) {
-                return Err(DecodeError::NonAscii { offset });
-            }
-            str::from_utf8(bytes).map(Cow::Borrowed).map_err(Into::into)
-        }
-        ParseEncoding::Utf8 => str::from_utf8(bytes).map(Cow::Borrowed).map_err(Into::into),
-        ParseEncoding::Latin1 => Ok(encoding_rs::mem::decode_latin1(bytes)),
-    }
-}
-
-fn decode_located<'a>(
-    input: &Stream<'a>,
-    bytes: &'a [u8],
-    encoding: ParseEncoding,
-    start: usize,
-) -> Result<Cow<'a, str>> {
-    decode_text(bytes, encoding).map_err(|cause| {
-        let (offset, width) = match &cause {
-            DecodeError::NonAscii { offset } => (*offset, 1),
-            DecodeError::Utf8(error) => (
-                error.valid_up_to(),
-                error
-                    .error_len()
-                    .unwrap_or(bytes.len() - error.valid_up_to()),
-            ),
-        };
-        ContextError::from_external_error(
-            input,
-            AdiError::Decoding {
-                span: start + offset..start + offset + width,
-                cause,
-            },
-        )
-    })
-}
-
-fn header<'a>(input: &mut Stream<'a>) -> Result<Header<'a>> {
-    let mut seen = HashMap::new();
-    let parse_opts = input.state.parser_options;
-
-    let (text_bytes, text_span) = take_till(0.., b'<')
-        .with_span()
-        .context(StrContext::Label("header text"))
-        .parse_next(input)?;
-
-    let text = decode_located(input, text_bytes, parse_opts.encoding, text_span.start)?;
-
-    let ((fields, end_span),) = seq!(
-        repeat_till(0.., terminated(preceded(
-            not(eof)
-                .context(StrContext::Label("header"))
-                .context(StrContext::Expected(
-                    StrContextValue::StringLiteral("<EOH>"),
-                )),
-            |input: &mut Stream<'a>| unique_header_entry(input, &mut seen),
-        ), take_till(0.., b'<')), eoh)
-            .context(StrContext::Label("header field")),
-        _: take_till(0.., b'<'),
-    )
-    .parse_next(input)?;
-
-    Ok(Header {
-        span: text_span.start..end_span.end,
-        text_bytes,
-        text_span,
-        text,
-        entries: fields,
-    })
-}
-
-fn eor<'a>(input: &mut Stream<'a>) -> Result<Range<usize>> {
-    terminated(Caseless("<EOR>").span(), opt(line_ending))
-        .context(StrContext::Label("end of record"))
-        .parse_next(input)
-}
-
-fn eoh<'a>(input: &mut Stream<'a>) -> Result<Range<usize>> {
-    Caseless("<EOH>")
-        .span()
-        .context(StrContext::Label("end of header"))
-        .parse_next(input)
-}
-
-#[derive(Clone)]
-struct FramedField<'a> {
-    specifier: DataSpecifier<'a>,
-    raw_data: &'a [u8],
-    descriptor_span: Range<usize>,
-    value_span: Range<usize>,
-    text: Cow<'a, str>,
-}
-
-fn prepared_field<'a>(
-    input: &mut Stream<'a>,
-) -> Result<(Field<'a>, definitions::ResolvedDefinition)> {
-    let (specifier, span) = data_specifier.with_span().parse_next(input)?;
-    let resolution =
-        definitions::resolve(&input.state, FieldSection::Record, &specifier, span.clone())
-            .map_err(|error| ContextError::from_external_error(input, error))?;
-    let f = frame_value(input, specifier, span)?;
-    let parsed = definitions::parse_resolved(f, &resolution, input.state.parser_options.encoding)
-        .map_err(|error| ContextError::from_external_error(input, error))?;
-    definitions::check_user_constraints(&input.state, &parsed)
-        .map_err(|error| ContextError::from_external_error(input, error))?;
-    Ok((parsed, resolution))
-}
-
-#[cfg(test)]
-fn field<'a>(input: &mut Stream<'a>) -> Result<Field<'a>> {
-    prepared_field(input).map(|(field, _)| field)
-}
-
-fn header_entry<'a>(input: &mut Stream<'a>) -> Result<HeaderEntry<'a>> {
-    let (specifier, span) = data_specifier.with_span().parse_next(input)?;
-    if declarations::is_declaration(&specifier.name) {
-        let f = frame_value(input, specifier, span)?;
-        declarations::parse(input, f).map(HeaderEntry::UserDefinition)
-    } else {
-        let resolution =
-            definitions::resolve(&input.state, FieldSection::Header, &specifier, span.clone())
-                .map_err(|error| ContextError::from_external_error(input, error))?;
-        let f = frame_value(input, specifier, span)?;
-        definitions::parse_resolved(f, &resolution, input.state.parser_options.encoding)
-            .map(HeaderEntry::Field)
-            .map_err(|error| ContextError::from_external_error(input, error))
-    }
-}
-
-fn unique_header_entry<'a>(
-    input: &mut Stream<'a>,
-    seen: &mut HashMap<String, Range<usize>>,
-) -> Result<HeaderEntry<'a>> {
-    let checkpoint = input.checkpoint();
-    let entry = header_entry(input)?;
-    let key = entry.name().to_ascii_uppercase();
-
-    if let Some(first) = seen.get(&key) {
-        let cause = AdiError::DuplicateField {
-            field_name: entry.name().to_owned(),
-            first_span: first.clone(),
-            second_span: entry.descriptor_span(),
-        };
-        input.reset(&checkpoint);
-        return Err(ContextError::from_external_error(input, cause));
-    }
-
-    seen.insert(key, entry.descriptor_span());
-    if let HeaderEntry::UserDefinition(definition) = &entry {
-        definitions::register_user_definition(&mut input.state, definition)
-            .map_err(|error| ContextError::from_external_error(input, error))?;
-    }
-    Ok(entry)
-}
-
-#[cfg(test)]
-fn framed_field<'a>(input: &mut Stream<'a>) -> Result<FramedField<'a>> {
-    let (specifier, descriptor_span) = data_specifier.with_span().parse_next(input)?;
-    frame_value(input, specifier, descriptor_span)
-}
-
-fn frame_value<'a>(
-    input: &mut Stream<'a>,
-    specifier: DataSpecifier<'a>,
-    descriptor_span: Range<usize>,
-) -> Result<FramedField<'a>> {
-    if specifier.length == 0 {
-        return Ok(FramedField {
-            specifier,
-            descriptor_span,
-            raw_data: &[],
-            value_span: Range {
-                start: input.current_token_start(),
-                end: input.current_token_start(),
-            },
-            text: Cow::Borrowed(""),
-        });
-    }
-    let parse_opts = input.state.parser_options;
-    let truncation = |available| AdiError::TruncatedValue {
-        field_name: specifier.name.to_string(),
-        declared: specifier.length,
-        available,
-        unit: parse_opts.field_length,
-    };
-
-    let byte_count = match (parse_opts.encoding, parse_opts.field_length) {
-        (ParseEncoding::Utf8, LengthUnit::UnicodeScalars) => {
-            let original: &[u8] = input.input.as_ref();
-            let mut remaining = original;
-            let mut byte_count = 0;
-
-            for idx in 0..specifier.length {
-                let (character, width) = bstr::decode_utf8(remaining);
-                if character.is_none() {
-                    let _ = input.next_slice(byte_count);
-
-                    let error = if remaining.is_empty() {
-                        let mut error = ContextError::from_external_error(input, truncation(idx));
-                        error.push(StrContext::Label("field data"));
-
-                        error
-                    } else {
-                        let start = input.current_token_start();
-                        let cause =
-                            std::str::from_utf8(&original[..byte_count + remaining.len().min(4)])
-                                .expect_err("prefix should be invalid UTF-8 because decode_utf8 rejected its leading scalar");
-                        let mut error = ContextError::from_external_error(
-                            input,
-                            AdiError::Decoding {
-                                span: start
-                                    ..start + cause.error_len().unwrap_or(remaining.len().min(4)),
-                                cause: DecodeError::Utf8(cause),
-                            },
-                        );
-                        error.push(StrContext::Label("field data"));
-                        error.push(StrContext::Expected(StrContextValue::Description(
-                            "a complete, valid UTF-8 scalar",
-                        )));
-
-                        error
-                    };
-
-                    return Err(error);
-                }
-
-                byte_count += width;
-                remaining = &remaining[width..];
-            }
-            byte_count
-        }
-        _ => {
-            let available_bytes = input.eof_offset();
-            let byte_count = specifier.length;
-
-            if available_bytes < byte_count {
-                let _ = input.next_slice(available_bytes);
-
-                let mut error =
-                    ContextError::from_external_error(input, truncation(available_bytes));
-                error.push(StrContext::Label("field data"));
-                return Err(error);
-            }
-
-            byte_count
-        }
-    };
-    let (raw_data, value_span) = winnow::token::take(byte_count)
-        .with_span()
-        .context(StrContext::Label("field data"))
-        .parse_next(input)?;
-
-    let text = decode_located(input, raw_data, parse_opts.encoding, value_span.start)?;
-
-    Ok(FramedField {
-        specifier,
-        descriptor_span,
-        raw_data,
-        value_span,
-        text,
-    })
-}
-
-fn declared_length(input: &mut Stream<'_>) -> Result<usize> {
-    let checkpoint = input.checkpoint();
-    let start = input.current_token_start();
-    let digits: &[u8] = match digit1::<_, ContextError>.parse_next(input) {
-        Ok(digits) => digits,
-        Err(_) => {
-            let span = start..start + usize::from(input.eof_offset() != 0);
-            let mut error = ContextError::from_external_error(
-                input,
-                error::AdiError::Syntax {
-                    reason: error::SyntaxErrorKind::InvalidLength,
-                    span,
-                    cause: None,
-                },
-            );
-            error.push(StrContext::Label("length"));
-            return Err(error);
-        }
-    };
-    // digit1 on this byte stream returns ASCII digits only.
-    let number = std::str::from_utf8(digits)
-        .expect("length should be UTF-8 because digit1 accepted only ASCII digits");
-    number.parse::<usize>().map_err(|cause| {
-        input.reset(&checkpoint);
-        let mut error = ContextError::from_external_error(
-            input,
-            error::AdiError::Syntax {
-                reason: error::SyntaxErrorKind::LengthOverflow,
-                span: start..start + digits.len(),
-                cause: Some(cause),
-            },
-        );
-        error.push(StrContext::Label("length"));
-        error
-    })
-}
-
-fn data_specifier<'a>(input: &mut Stream<'a>) -> Result<DataSpecifier<'a>> {
-    seq!(
-        _: '<',
-        take_until(0.., ":").context(StrContext::Label("name")),
-        _: ':',
-        declared_length,
-        optional_data_type,
-        _: '>',
-    )
-    .try_map(|(name, length, data_type)| {
-        let name = Cow::Owned(String::from_utf8(name.to_owned())?);
-        Ok::<_, std::string::FromUtf8Error>(DataSpecifier {
-            name,
-            length,
-            type_indicator: data_type,
-        })
-    })
-    .context(StrContext::Label("data specifier"))
-    .parse_next(input)
-}
-
-fn data_type<'a>(input: &mut Stream<'a>) -> Result<DataType> {
-    take_while(0.., AsChar::is_alpha)
-        .try_map(|code: &'a [u8]| {
-            let str_code = std::str::from_utf8(code).expect(
-                "type indicator should be UTF-8 because the parser accepted only ASCII letters",
-            );
-            DataType::try_from(str_code)
-        })
-        .context(StrContext::Label("data type"))
-        .parse_next(input)
-}
-
-fn optional_data_type<'a>(input: &mut Stream<'a>) -> Result<Option<DataType>> {
-    if opt(':').parse_next(input)?.is_some() {
-        let start = input.current_token_start();
-        let kind = data_type.parse_next(input)?;
-        if matches!(kind, DataType::IntlString | DataType::IntlMultilineString) {
-            return Err(ContextError::from_external_error(
-                input,
-                AdiError::TypeUnavailableInAdi {
-                    data_type: kind,
-                    span: start..input.current_token_start(),
-                },
-            ));
-        }
-        Ok(Some(kind))
-    } else {
-        Ok(None)
-    }
-}
-
-fn unique_field<'a>(
-    input: &mut Stream<'a>,
-    seen: &mut HashMap<String, Range<usize>>,
-) -> Result<Field<'a>> {
-    let checkpoint = input.checkpoint();
-    let (parsed, resolution) = prepared_field(input)?;
-    let key = parsed.name().to_ascii_uppercase();
-
-    if let Some(first_span) = seen.get(&key) {
-        let cause = AdiError::DuplicateField {
-            field_name: parsed.name().to_owned(),
-            first_span: first_span.clone(),
-            second_span: parsed.descriptor_span(),
-        };
-        input.reset(&checkpoint);
-        return Err(ContextError::from_external_error(input, cause));
-    }
-
-    seen.insert(key, parsed.descriptor_span());
-    definitions::register_application(&mut input.state, &parsed, &resolution);
-    Ok(parsed)
-}
-
-fn record<'a>(input: &mut Stream<'a>) -> Result<Record<'a>> {
-    let mut seen = HashMap::new();
-    take_until(0.., '<').void().parse_next(input)?;
-    let start = input.current_token_start();
-    repeat_till(
-        1..,
-        terminated(
-            preceded(
-                not(eof)
-                    .context(StrContext::Label("record"))
-                    .context(StrContext::Expected(StrContextValue::StringLiteral(
-                        "<EOR>",
-                    ))),
-                |input: &mut Stream<'a>| unique_field(input, &mut seen),
-            ),
-            take_till(0.., b'<'),
-        ),
-        eor,
-    )
-    .map(|(fields, end_span)| Record {
-        fields,
-        span: start..end_span.end,
-    })
-    .context(StrContext::Label("record"))
-    .parse_next(input)
-}
-
-#[cfg(test)]
-mod test {
-    use super::*;
-
-    #[test]
-    fn basic_field() {
-        let mut basic = Stream {
-            input: LocatingSlice::new("<NAME:3>Ray".as_bytes()),
-            state: State {
-                parser_options: ParseOpts::default(),
-                ..State::default()
-            },
-        };
-        let parsed = field(&mut basic)
-            .expect("NAME should parse because its three supplied bytes match the declared length");
-
-        assert_eq!(parsed.name(), "NAME");
-        assert_eq!(parsed.raw_data(), b"Ray");
-        assert_eq!(parsed.text(), "Ray");
-        assert_eq!(parsed.descriptor_span(), 0..8);
-        assert_eq!(parsed.value_span(), 8..11);
-        assert_eq!(parsed.data_type(), Some(DataType::String));
-        assert_eq!(parsed.type_indicator(), None);
-    }
-
-    #[test]
-    fn basic_header() {
-        let mut header_text = Stream {
-            input: LocatingSlice::new(
-                "Generated on 2011-11-22 at 02:15:23Z for WN4AZY
-
-<adif_ver:5>3.0.5
-<programid:7>MonoLog
-<USERDEF1:8:N>QRP_ARCI
-<USERDEF2:19:E>SweaterSize,{S,M,L}
-<USERDEF3:15>ShoeSize,{5:20}
-<EOH>"
-                    .as_bytes(),
-            ),
-            state: State {
-                parser_options: ParseOpts::default(),
-                ..State::default()
-            },
-        };
-        let parsed = header(&mut header_text)
-            .expect("header example should parse because its fields are framed and EOH is present");
-
-        assert_eq!(parsed.span(), 0..180);
-        assert_eq!(parsed.text_span(), 0..49);
-        assert_eq!(
-            parsed.text(),
-            "Generated on 2011-11-22 at 02:15:23Z for WN4AZY\n\n"
-        );
-        for (entry, (name, descriptor, value, text)) in parsed.entries().iter().zip([
-            ("adif_ver", 49..61, 61..66, "3.0.5"),
-            ("programid", 67..80, 80..87, "MonoLog"),
-            ("USERDEF1", 88..102, 102..110, "QRP_ARCI"),
-            ("USERDEF2", 111..126, 126..145, "SweaterSize,{S,M,L}"),
-            ("USERDEF3", 146..159, 159..174, "ShoeSize,{5:20}"),
-        ]) {
-            assert_eq!(entry.name(), name);
-            assert_eq!(entry.descriptor_span(), descriptor);
-            assert_eq!(entry.value_span(), value);
-            let actual = match entry {
-                HeaderEntry::Field(f) => f.text(),
-                HeaderEntry::UserDefinition(d) => d.text(),
-            };
-            assert_eq!(actual, text);
-        }
-        assert_eq!(parsed.entries().len(), 5);
-    }
-}
+pub mod error;
+pub mod framing;
+pub mod options;
+pub mod permissive;
+pub mod strict;

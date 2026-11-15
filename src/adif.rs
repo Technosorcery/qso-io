@@ -1,113 +1,11 @@
-//! Amateur Data Interchange Format (ADIF) types and ADI parsing.
+//! Amateur Data Interchange Format (ADIF) data types, references, and ADI support.
 //!
-//! Start with [`adi::Parser`] and [`ParseOpts`] to read ADI records while
-//! preserving their original bytes and source locations. Parsing yields complete
-//! headers and records. Structural errors, including text-decoding failures,
-//! terminate iteration while leaving previously yielded sections available.
-//!
-//! [`StandardField`] describes standard field definitions. Reference types such
-//! as [`AntPath`], [`ArrlSection`], [`Band`] and [`DxccEntity`] describe enumeration
-//! identities and their metadata; parser membership checks use these same types.
-//!
-//! # Defined values
-//!
-//! Standard header and QSO fields use the bundled ADIF 3.1.8 definitions even
-//! when their inline indicators are omitted. USERDEF header declarations supply
-//! record-field types and constraints, taking precedence over application-field
-//! names. Application fields establish their type on first occurrence; later
-//! omitted indicators inherit it and explicit conflicts are terminal errors.
-//!
-//! [`Field::data_type`] reports the resolved type; [`Field::type_indicator`]
-//! reports only the supplied inline indicator. Unknown untyped fields retain
-//! decoded text. Supplied zero-length contents have no value and bypass value
-//! constraints, while descriptor consistency still applies. Lookup distinguishes
-//! an empty field from an absent field. Original spelling and bytes remain available.
-//!
-//! The catalog is fixed regardless of ADIF_VER. Membership checks use member data
-//! supplied by ADIF, retaining historical entries; country and QSO-date
-//! relationships belong to validation. Externally delegated sets, including DOKs,
-//! are not checked. Partial subdivision tables do not reject unlisted values.
-//! SOTA checks are limited to its text repertoire and a slash with nonempty
-//! portions; external reference assignments are not looked up.
-//!
-//! ```
-//! use qso_io::adif::{adi::{Parser, Section}, ParseOpts, Value};
-//! # fn main() -> Result<(), Box<dyn std::error::Error>> {
-//! let mut parser = Parser::new(b"<FREQ:6>14.074<NOTE:0><EOR>", ParseOpts::default());
-//! let record = match parser
-//!     .next()
-//!     .expect("example should yield a record because it supplies fields followed by EOR")?
-//! {
-//!     Section::Record(record) => record,
-//!     other => panic!("expected record, got {other:?}"),
-//! };
-//! let frequency = record
-//!     .field("freq")
-//!     .expect("record should contain FREQ from the supplied descriptor");
-//! assert_eq!(frequency.data_type(), Some(qso_io::adif::DataType::Number));
-//! assert_eq!(frequency.type_indicator(), None);
-//! assert!(matches!(frequency.value(), Some(Value::Number(_))), "expected Number, got {:?}", frequency.value());
-//! assert_eq!(frequency.text(), "14.074");
-//! assert!(
-//!     record
-//!         .field("NOTE")
-//!         .expect("record should contain NOTE because the example supplies <NOTE:0>")
-//!         .value()
-//!         .is_none()
-//! );
-//! assert!(record.field("MISSING").is_none());
-//! # Ok(())
-//! # }
-//! ```
-//!
-//! # Declared text and encodings
-//!
-//! [`ParseOpts::encoding`] selects both decoding and the character
-//! repertoire for declared String (`S`), MultilineString (`M`) and Enumeration
-//! (`E`) values. These are qso-io's explicit compatibility rules:
-//!
-//! | Encoding | String and Enumeration | MultilineString |
-//! | --- | --- | --- |
-//! | ASCII | U+0020–U+007E | Same characters plus CRLF pairs |
-//! | Latin-1 | U+0020–U+007E and U+00A0–U+00FF | Same characters plus CRLF pairs |
-//! | UTF-8 | Valid Unicode except CR and LF | Same characters plus CRLF pairs |
-//!
-//! All modes reject lone CR/LF in MultilineString. UTF-8 permits other controls,
-//! including TAB, NUL, DEL and C1; ASCII and Latin-1 use the narrower ranges
-//! above. The UTF-8 compatibility rule follows ADIF's international-text
-//! definitions. The `I` and `G` indicators themselves are unavailable in ADI.
-//! Unresolved untyped contents use decoding alone. USERDEF enumeration members use
-//! the String rules above, retaining each member's spelling and order.
-//!
-//! # User-field declarations
-//!
-//! Headers expose fields and USERDEFn declarations through
-//! `entries()`. A declaration describes a record field; its optional indicator
-//! and parsed constraints are retained separately from its original text.
-//!
-//! ```
-//! use qso_io::adif::{adi::{HeaderEntry, Parser, Section}, DataType, ParseOpts};
-//! # fn main() -> Result<(), Box<dyn std::error::Error>> {
-//! let mut parser = Parser::new(b"P<USERDEF1:3:N>EPC<EOH>", ParseOpts::default());
-//! let header = match parser
-//!     .next()
-//!     .expect("example should yield a header because it starts with a preamble")?
-//! {
-//!     Section::Header(header) => header,
-//!     other => panic!("expected header, got {other:?}"),
-//! };
-//! let definition = match &header.entries()[0] {
-//!     HeaderEntry::UserDefinition(definition) => definition,
-//!     other => panic!("expected USERDEF declaration, got {other:?}"),
-//! };
-//! assert_eq!(definition.field_name(), "EPC");
-//! assert_eq!(definition.data_type(), Some(DataType::Number));
-//! assert_eq!(definition.text(), "EPC");
-//! # Ok(())
-//! # }
-//! ```
+//! [`DataType`] describes ADIF value categories. [`value`] provides stored ADIF
+//! values, and [`StandardField`] describes standard field definitions.
+//! Reference enums describe ADIF enumeration identities and their metadata.
+//! See [`adi::parser`] for strict and permissive ADI parsing interfaces.
 
-use std::{borrow::Cow, ops::Range, str::Utf8Error};
+use std::str::Utf8Error;
 
 use thiserror::Error;
 
@@ -119,7 +17,6 @@ pub use enumerations::{
     SecondarySubdivisionAlt, Submode,
 };
 pub use standard_field::{FieldSection, StandardField};
-pub use value::{AdifLocation, AdifTime, Hemisphere, TimePrecision, Value, ValueError};
 
 /// Borrowed ADI sections, their parser, and structural diagnostics.
 pub mod adi;
@@ -127,127 +24,9 @@ mod enumerations;
 mod number;
 mod standard_field;
 mod text;
-mod value;
+pub mod value;
 
-/// Explicit text encoding and declared-length interpretation for one parser.
-///
-/// Defaults to ASCII and byte lengths. The selected settings apply to the
-/// entire input.
-#[derive(Debug, Default, Copy, Clone, PartialEq, Eq)]
-pub struct ParseOpts {
-    /// Encoding used to decode field values and header preamble text.
-    ///
-    /// Also selects the declared text character rules; see the
-    /// [declared text table](crate::adif#declared-text-and-encodings).
-    pub encoding: ParseEncoding,
-    /// Unit used to interpret each descriptor's declared value length.
-    pub field_length: LengthUnit,
-}
-
-/// Character encoding of ADI field values and header preamble text.
-#[derive(Debug, Default, Copy, Clone, PartialEq, Eq)]
-pub enum ParseEncoding {
-    /// Seven-bit ASCII, with byte values 0x00–0x7F.
-    #[default]
-    Ascii,
-    /// ISO-8859-1, with bytes corresponding directly to U+0000–U+00FF,
-    /// including C1 controls.
-    ///
-    /// This is ISO-8859-1/Latin-1 mapping, not Windows-1252.
-    Latin1,
-    /// UTF-8 encoding of Unicode scalar values.
-    Utf8,
-}
-
-/// Unit of the value length declared in an ADI field descriptor.
-#[derive(Debug, Default, Copy, Clone, PartialEq, Eq)]
-pub enum LengthUnit {
-    /// Original input bytes.
-    #[default]
-    Bytes,
-    /// Unicode scalar values, rather than grapheme clusters or UTF-16 code units.
-    ///
-    /// A scalar occupies one byte in ASCII or Latin-1 and one to four bytes
-    /// in UTF-8.
-    UnicodeScalars,
-}
-
-/// A complete length-framed field with immutable bytes and cached text decoding.
-///
-/// Name casing, raw value bytes and decoded spelling are preserved.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Field<'a> {
-    specifier: DataSpecifier<'a>,
-    data_type: Option<DataType>,
-    raw_data: &'a [u8],
-    descriptor_span: Range<usize>,
-    value_span: Range<usize>,
-    text: Option<Cow<'a, str>>,
-    value: Option<Value<'a>>,
-}
-
-impl<'a> Field<'a> {
-    /// Returns the field name with its original casing.
-    pub fn name(&self) -> &str {
-        &self.specifier.name
-    }
-
-    /// Returns the descriptor's length in the unit selected by [`ParseOpts`].
-    pub fn declared_length(&self) -> usize {
-        self.specifier.length
-    }
-
-    /// Returns the resolved ADIF type, or None for unresolved untyped contents.
-    ///
-    /// Standard definitions, USERDEF declarations, application-field history, or
-    /// an inline indicator can establish this type, independently of emptiness.
-    pub fn data_type(&self) -> Option<DataType> {
-        self.data_type
-    }
-
-    /// Returns the type named by the optional inline descriptor indicator.
-    ///
-    /// This is None when the indicator was omitted, even if the type was resolved
-    /// from a definition or previous application-field occurrence.
-    pub fn type_indicator(&self) -> Option<DataType> {
-        self.specifier.type_indicator
-    }
-
-    /// Borrows the original value bytes.
-    pub fn raw_data(&self) -> &'a [u8] {
-        self.raw_data
-    }
-
-    /// Returns the original byte range from the descriptor's `<` through `>`.
-    ///
-    /// The end is exclusive; value bytes are not included.
-    pub fn descriptor_span(&self) -> Range<usize> {
-        self.descriptor_span.clone()
-    }
-
-    /// Returns the original value's byte range with an exclusive end.
-    ///
-    /// An empty value has an empty range at its actual input position, and spans
-    /// always count bytes even when the declared length counts scalars.
-    pub fn value_span(&self) -> Range<usize> {
-        self.value_span.clone()
-    }
-
-    /// Borrows the original decoded spelling retained during parsing.
-    pub fn text(&self) -> &str {
-        match &self.value {
-            Some(Value::Text(text)) => text,
-            _ => self.text.as_deref().unwrap_or(""),
-        }
-    }
-
-    /// Borrows the stored value, or returns None for supplied zero-length contents.
-    pub fn value(&self) -> Option<&Value<'a>> {
-        self.value.as_ref()
-    }
-}
-
-/// Text-decoding cause retained by a located structural error.
+/// A text-decoding failure in field data or a header preamble.
 #[derive(Debug, Error, Clone, PartialEq, Eq)]
 pub enum DecodeError {
     #[error("Non-ASCII byte at offset {offset}")]
@@ -264,13 +43,6 @@ pub enum DecodeError {
         #[from]
         Utf8Error,
     ),
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-struct DataSpecifier<'a> {
-    name: Cow<'a, str>,
-    length: usize,
-    type_indicator: Option<DataType>,
 }
 
 /// ADIF value categories and their optional descriptor indicators.

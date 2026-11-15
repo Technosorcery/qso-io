@@ -1,8 +1,23 @@
+use std::collections::HashMap;
 use std::ops::Range;
 
-use super::error::{AdiError, StructuralErrorKind, TypeAlternativeFailure};
-use super::{DataSpecifier, DataType, Field, FramedField, State, values};
-use crate::adif::{FieldSection, ParseEncoding, StandardField, ValueError};
+use super::super::options::ParseOpts;
+use super::error::AdiError;
+use super::values;
+use crate::adif::DataType;
+use crate::adif::adi::parser::error::{StructuralErrorKind, TypeAlternativeFailure};
+use crate::adif::adi::parser::framing::field::PermissiveField;
+use crate::adif::adi::parser::options::ParseEncoding;
+use crate::adif::adi::parser::strict::field::{DataSpecifier, Field};
+use crate::adif::value::ValueError;
+use crate::adif::{FieldSection, StandardField};
+
+#[derive(Debug, Default)]
+pub(super) struct State {
+    pub(super) parser_options: ParseOpts,
+    pub(super) user_definitions: HashMap<String, UserFieldRule>,
+    pub(super) application_types: HashMap<String, EstablishedApplicationType>,
+}
 
 #[derive(Debug, Clone, Copy)]
 pub(super) enum TypeSelection {
@@ -140,7 +155,7 @@ pub(super) fn resolve(
 }
 
 fn parse_type<'a>(
-    framed: FramedField<'a>,
+    framed: PermissiveField<'a>,
     kind: Option<DataType>,
     standard: Option<StandardField>,
     encoding: ParseEncoding,
@@ -164,7 +179,7 @@ fn parse_type<'a>(
 }
 
 pub(super) fn parse_resolved<'a>(
-    framed: FramedField<'a>,
+    framed: PermissiveField<'a>,
     resolution: &ResolvedDefinition,
     encoding: ParseEncoding,
 ) -> Result<Field<'a>, AdiError> {
@@ -211,14 +226,17 @@ pub(super) fn parse_resolved<'a>(
 #[derive(Debug)]
 pub(super) struct UserFieldRule {
     data_type: Option<DataType>,
-    constraint: Option<(crate::adif::adi::UserDefinitionConstraint, Range<usize>)>,
+    constraint: Option<(
+        crate::adif::adi::parser::strict::declarations::UserDefinitionConstraint,
+        Range<usize>,
+    )>,
     declaration_span: Range<usize>,
     target_span: Range<usize>,
 }
 
 pub(super) fn register_user_definition(
     state: &mut State,
-    definition: &crate::adif::adi::UserDefinition<'_>,
+    definition: &crate::adif::adi::parser::strict::declarations::UserDefinition<'_>,
 ) -> Result<(), AdiError> {
     let target = definition.field_name();
     let standard_name = target.parse::<StandardField>().is_ok()
@@ -228,7 +246,7 @@ pub(super) fn register_user_definition(
         return Err(AdiError::InvalidUserDefinition {
             field_name: definition.name().to_owned(),
             span: definition.target_span.clone(),
-            cause: crate::adif::adi::UserDefinitionError::StandardFieldName,
+            cause: crate::adif::adi::parser::strict::declarations::UserDefinitionError::StandardFieldName,
             numeric_cause: None,
         });
     }
@@ -260,7 +278,7 @@ pub(super) fn register_user_definition(
 }
 
 pub(super) fn check_user_constraints(state: &State, field: &Field<'_>) -> Result<(), AdiError> {
-    use crate::adif::adi::{UserDefinitionConstraint, UserDefinitionValueError};
+    use super::declarations::{UserDefinitionConstraint, UserDefinitionValueError};
 
     if field.value().is_none() {
         return Ok(());

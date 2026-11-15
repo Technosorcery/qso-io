@@ -245,8 +245,7 @@ impl<'a> SecondarySubdivision<'a> {
     ///
     /// County prefixes dispatch to a single parser; a failed nested parse has no
     /// fallback. Unprefixed codes can yield multiple format-compatible candidates.
-    /// Matching ignores ASCII case without trimming. Payloads borrow the input;
-    /// text repertoire checks belong to the selected parsing encoding.
+    /// Matching ignores ASCII case without trimming. Payloads borrow the input.
     pub fn candidates(code: &'a str) -> impl Iterator<Item = Self> {
         let (county, unprefixed) = match code.split_once(',') {
             Some((prefix, county)) => (Self::parse_county(prefix, county), None),

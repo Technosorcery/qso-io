@@ -1,5 +1,5 @@
 use super::*;
-use crate::adif::Value;
+use qso_io::adif::value::Value;
 
 #[test]
 fn standard_fields_resolve_without_inline_indicators() {
@@ -12,6 +12,7 @@ fn standard_fields_resolve_without_inline_indicators() {
     assert_eq!(
         header
             .field("PROGRAMID")
+            .expect("strict parser should yield unique descriptor names")
             .expect("header should contain PROGRAMID")
             .data_type(),
         Some(DataType::String)
@@ -38,7 +39,7 @@ fn standard_indicators_and_adi_eligibility_apply_to_empty_values() {
         (&b"<MY_CQ_ZONE:0:N><EOR>"[..], DataType::PositiveInteger),
         (&b"<NAME_INTL:0><EOR>"[..], DataType::IntlString),
     ] {
-        let mut parser = Parser::new(bytes, ParseOpts::default());
+        let mut parser = StrictParser::new(bytes, ParseOpts::default());
         let error = next_error(&mut parser);
         if kind == DataType::PositiveInteger {
             assert!(
@@ -60,7 +61,7 @@ fn standard_indicators_and_adi_eligibility_apply_to_empty_values() {
         );
         assert_exhausted(&mut parser);
     }
-    let mut parser = Parser::new(b"<MY_CQ_ZONE:4>14.5<EOR>", ParseOpts::default());
+    let mut parser = StrictParser::new(b"<MY_CQ_ZONE:4>14.5<EOR>", ParseOpts::default());
     let error = next_error(&mut parser);
     assert_eq!(error.span(), 16..17);
 }
@@ -76,7 +77,7 @@ fn standard_membership_uses_ascii_identity_without_date_relationships() {
     );
     for raw in ["ſſb", " SSB", "SSB "] {
         let bytes = format!("<MODE:{}>{raw}<EOR>", raw.len());
-        let mut parser = Parser::new(
+        let mut parser = StrictParser::new(
             bytes.as_bytes(),
             ParseOpts {
                 encoding: ParseEncoding::Utf8,
@@ -112,7 +113,7 @@ fn standard_alternatives_prefer_credit_and_retain_both_failures() {
         );
     }
     let bytes = b"<CREDIT_GRANTED:8>AJA,NOPE<EOR>";
-    let mut parser = Parser::new(bytes, ParseOpts::default());
+    let mut parser = StrictParser::new(bytes, ParseOpts::default());
     let error = next_error(&mut parser);
     let error::StructuralErrorKind::NoMatchingType { failures, .. } = error.kind() else {
         panic!("expected alternatives, got {error:?}");
@@ -151,11 +152,11 @@ fn secondary_subdivision_failures_preserve_field_diagnostics() {
         "1234567",
     ] {
         let bytes = format!("<CNTY:{}>{code}<EOR><CALL:1>X<EOR>", code.len());
-        let mut parser = Parser::new(bytes.as_bytes(), ParseOpts::default());
+        let mut parser = StrictParser::new(bytes.as_bytes(), ParseOpts::default());
         let error = next_error(&mut parser);
         assert!(
             matches!(error.kind(), error::StructuralErrorKind::InvalidValue {
-                field_name, cause: crate::adif::ValueError::InvalidEnumeration,
+                field_name, cause: qso_io::adif::value::ValueError::InvalidEnumeration,
                 enumeration: Some("Secondary_Administrative_Subdivision"), ..
             } if field_name == "CNTY"),
             "{code:?}: {error:?}"
@@ -242,7 +243,7 @@ fn nested_subdivision_errors_preserve_encoded_list_member_spans() {
                 let value_start = bytes.len();
                 bytes.extend_from_slice(&value);
                 bytes.extend_from_slice(b"<EOR><CALL:1>X<EOR>");
-                let mut parser = Parser::new(
+                let mut parser = StrictParser::new(
                     &bytes,
                     ParseOpts {
                         encoding,
