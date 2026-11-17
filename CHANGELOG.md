@@ -1,9 +1,10 @@
 # Changelog
 
-All notable changes to this project will be documented in this file.
+This file records notable changes to the project.
 
-The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
-and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+The format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
+This project follows
+[Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
@@ -12,10 +13,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - Strict and permissive parsers for ADI headers and QSO records.
-- ASCII, ISO-8859-1 (Latin-1), and UTF-8 decoding, with field lengths interpreted as bytes or Unicode scalar values.
-- Typed field values, including arbitrary-precision integers and exact decimal numbers.
-- Strict parsing using ADIF 3.1.8 field definitions, USERDEF types and constraints, and application-field type consistency.
-- Original input bytes, source spans, and case-insensitive field lookup with ambiguity diagnostics.
-- Permissive parsing that preserves duplicate fields and decoding errors when field boundaries are known.
+- ASCII, ISO-8859-1 (Latin-1), and UTF-8 decoding, with field lengths
+  interpreted as bytes or Unicode scalar values.
+- Typed field values with arbitrary-precision integers and exact decimal
+  numbers.
+- Strict parsing using ADIF 3.1.8 field definitions, USERDEF types and
+  constraints, and application-field type consistency.
+- Input bytes, source spans, and case-insensitive field lookup with ambiguity
+  diagnostics.
+- Permissive parsing that keeps duplicate fields and decoding errors when
+  field boundaries are known.
 
-Requires Rust 1.88 or newer. Licensed under MIT OR Apache-2.0.
+Minimum Rust version: 1.88. The license is MIT OR Apache-2.0.
