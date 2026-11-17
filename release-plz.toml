@@ -1,0 +1,9 @@
+[workspace]
+semver_check = true
+changelog_update = true
+dependencies_update = false
+pr_name = "Release qso-io {{ version }}"
+pr_branch_prefix = "release-plz-"
+
+[changelog]
+commit_parsers = [{ message = ".*", group = "Changes" }]

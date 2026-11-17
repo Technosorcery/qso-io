@@ -2,6 +2,13 @@
 name = "qso-io"
 version = "0.1.0"
 edition = "2024"
+rust-version = "1.88"
+description = "Amateur radio data interchange with strict and permissive ADI parsing"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/Technosorcery/qso-io"
+readme = "README.md"
+keywords = ["amateur-radio", "ham-radio", "adif", "adi", "parser"]
+categories = ["parser-implementations"]
 
 [dependencies]
 bigdecimal = "0.4.11"
