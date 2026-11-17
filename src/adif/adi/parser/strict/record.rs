@@ -19,7 +19,7 @@ use crate::adif::adi::lookup::{LookupError, single_match};
 ///
 /// Field names are unique within the record under ASCII case-insensitive
 /// comparison. Its span starts at the first descriptor and ends after EOR's
-/// closing `>`, excluding surrounding ignored text and line endings.
+/// closing `>`. The span excludes surrounding ignored text and line endings.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Record<'a> {
     pub(super) span: Range<usize>,
@@ -27,26 +27,28 @@ pub struct Record<'a> {
 }
 
 impl<'a> Record<'a> {
-    /// Borrows all fields in their original order.
+    /// Borrows all fields in their source order.
     pub fn fields(&self) -> &[Field<'a>] {
         &self.fields
     }
 
-    /// Finds a field by ASCII case-insensitive name, reporting ambiguous matches.
+    /// Finds a field by ASCII case-insensitive name.
+    ///
+    /// Multiple matches produce an ambiguity error.
     pub fn field(&self, name: &str) -> Result<Option<&Field<'a>>, LookupError> {
         single_match(name, self.fields_named(name), Field::descriptor_span)
     }
 
-    /// Iterates over matching fields in source order without choosing precedence.
+    /// Iterates over matching fields in source order without a precedence rule.
     pub fn fields_named<'s>(&'s self, name: &str) -> impl Iterator<Item = &'s Field<'a>> {
         self.fields
             .iter()
             .filter(move |field| field.name().eq_ignore_ascii_case(name))
     }
 
-    /// Returns the section's syntactic byte range, excluding surrounding separators.
+    /// Returns the section's syntactic byte range without surrounding separators.
     ///
-    /// Offsets refer to the original input slice and the end is exclusive.
+    /// Offsets refer to the input slice. The end is exclusive.
     pub fn span(&self) -> Range<usize> {
         self.span.clone()
     }

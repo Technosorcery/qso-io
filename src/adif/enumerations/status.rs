@@ -48,7 +48,7 @@ pub enum EqslAg {
     /// The callsign does not hold Authenticity Guaranteed status (`N`).
     #[strum(serialize = "N")]
     No,
-    /// Status was not specified; the ADIF default (`U`).
+    /// Unspecified status, the ADIF default (`U`).
     #[strum(serialize = "U")]
     Unspecified,
 }
@@ -60,7 +60,7 @@ impl EqslAg {
     }
 }
 
-/// The medium used to confirm a QSO, including within a CreditList (III.B.14).
+/// A medium for QSO confirmation, also in a CreditList (III.B.14).
 #[derive(Debug, Copy, Clone, PartialEq, Eq, EnumIter, EnumString, IntoStaticStr)]
 #[strum(ascii_case_insensitive)]
 pub enum QslMedium {
@@ -89,10 +89,10 @@ pub enum QslRcvd {
     /// A card was received or an online service confirmed the QSO (`Y`).
     #[strum(serialize = "Y")]
     Yes,
-    /// No card or online confirmation has been received (`N`).
+    /// No QSL card or online confirmation received (`N`).
     #[strum(serialize = "N")]
     No,
-    /// A card or online confirmation has been requested (`R`).
+    /// A request for a card or online confirmation (`R`).
     #[strum(serialize = "R")]
     Requested,
     /// DXCC credit was granted for a card or LoTW confirmation (`V`, import-only).
@@ -109,7 +109,7 @@ impl QslRcvd {
         self.into()
     }
 
-    /// Reports whether this status is accepted only for importing old data.
+    /// Reports whether ADIF accepts this status only on import of legacy data.
     pub fn import_only(self) -> bool {
         self == Self::Verified
     }
@@ -128,7 +128,7 @@ pub enum QslSent {
     /// The contacted station requested a card or upload (`R`).
     #[strum(serialize = "R")]
     Requested,
-    /// The card or upload has been selected for sending (`Q`).
+    /// A card or upload in the queue for transmission (`Q`).
     #[strum(serialize = "Q")]
     Queued,
     /// Ignore the QSL or treat it as invalid (`I`).
@@ -167,7 +167,7 @@ impl QslVia {
         self.into()
     }
 
-    /// Reports whether this route is accepted only for importing old data.
+    /// Reports whether ADIF accepts this route only on import of legacy data.
     pub fn import_only(self) -> bool {
         self == Self::Manager
     }
@@ -202,10 +202,10 @@ impl QsoComplete {
 #[derive(Debug, Copy, Clone, PartialEq, Eq, EnumIter, EnumString, IntoStaticStr)]
 #[strum(ascii_case_insensitive)]
 pub enum QsoDownloadStatus {
-    /// The QSO has been downloaded (`Y`).
+    /// A QSO with a completed download (`Y`).
     #[strum(serialize = "Y")]
     Downloaded,
-    /// The QSO has not been downloaded (`N`).
+    /// A QSO without a completed download (`N`).
     #[strum(serialize = "N")]
     NotDownloaded,
     /// Ignore the QSO or treat it as invalid (`I`).
@@ -303,7 +303,7 @@ pub enum PropagationMode {
     /// IRLP-assisted communication (`IRL`).
     #[strum(serialize = "IRL")]
     Irlp,
-    /// Line of sight, including transmission through obstacles (`LOS`).
+    /// Line of sight, with transmission through obstacles (`LOS`).
     #[strum(serialize = "LOS")]
     LineOfSight,
 }
@@ -322,7 +322,7 @@ pub enum MorseKeyType {
     /// Straight key: the operator forms every element (`SK`).
     #[strum(serialize = "SK")]
     StraightKey,
-    /// Sideswiper: hand-formed elements using alternating sides (`SS`).
+    /// Sideswiper: hand-formed elements from alternate sides (`SS`).
     #[strum(serialize = "SS")]
     Sideswiper,
     /// Single paddle operating an electronic keyer (`SP`).

@@ -1,6 +1,6 @@
 //! Amateur-radio contact data interchange.
 //!
-//! Format-specific APIs are organized into modules. See [`adif`] for ADIF
+//! Modules organize the APIs by format. See [`adif`] for ADIF
 //! types and ADI parsing.
 
 pub mod adif;

@@ -1,32 +1,32 @@
 //! Mexican primary subdivisions, DXCC entity 50.
 use strum::{EnumIter, EnumString, IntoStaticStr};
 
-/// A Mexican primary subdivision, including ADIF's import-only historical spellings.
+/// A Mexican primary subdivision, with ADIF's import-only historical spellings.
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq, EnumIter, EnumString, IntoStaticStr)]
 #[strum(ascii_case_insensitive)]
 pub enum PrimarySubdivision {
     /// Colima.
     #[strum(serialize = "COL")]
     Colima,
-    /// Distrito Federal; import-only, replaced by CMX.
+    /// Distrito Federal (import-only, replaced by CMX).
     #[strum(serialize = "DF")]
     DistritoFederal,
     /// Ciudad de México.
     #[strum(serialize = "CMX")]
     CiudadDeMexico,
-    /// Estado de México; import-only historical spelling.
+    /// Estado de México (import-only historical spelling).
     #[strum(serialize = "EMX")]
     EstadoDeMexicoLegacy,
     /// México.
     #[strum(serialize = "MEX")]
     Mexico,
-    /// Guanajuato; import-only historical spelling GTO.
+    /// Guanajuato (import-only historical spelling GTO).
     #[strum(serialize = "GTO")]
     GuanajuatoLegacy,
     /// Guanajuato.
     #[strum(serialize = "GUA")]
     Guanajuato,
-    /// Hidalgo; import-only historical spelling HGO.
+    /// Hidalgo (import-only historical spelling HGO).
     #[strum(serialize = "HGO")]
     HidalgoLegacy,
     /// Hidalgo.
@@ -47,13 +47,13 @@ pub enum PrimarySubdivision {
     /// Puebla.
     #[strum(serialize = "PUE")]
     Puebla,
-    /// Querétaro de Arteaga; import-only historical spelling QRO.
+    /// Querétaro de Arteaga (import-only historical spelling QRO).
     #[strum(serialize = "QRO")]
     QueretaroDeArteaga,
     /// Querétaro.
     #[strum(serialize = "QUE")]
     Queretaro,
-    /// Tlaxcala; import-only historical spelling TLX.
+    /// Tlaxcala (import-only historical spelling TLX).
     #[strum(serialize = "TLX")]
     TlaxcalaLegacy,
     /// Tlaxcala.
@@ -62,13 +62,13 @@ pub enum PrimarySubdivision {
     /// Veracruz de Ignacio de la Llave.
     #[strum(serialize = "VER")]
     Veracruz,
-    /// Aguascalientes; import-only historical spelling AGS.
+    /// Aguascalientes (import-only historical spelling AGS).
     #[strum(serialize = "AGS")]
     AguascalientesLegacy,
     /// Aguascalientes.
     #[strum(serialize = "AGU")]
     Aguascalientes,
-    /// Baja California; import-only historical spelling BC.
+    /// Baja California (import-only historical spelling BC).
     #[strum(serialize = "BC")]
     BajaCaliforniaLegacy,
     /// Baja California.
@@ -83,13 +83,13 @@ pub enum PrimarySubdivision {
     /// Coahuila de Zaragoza.
     #[strum(serialize = "COA")]
     CoahuilaDeZaragoza,
-    /// Durango; import-only historical spelling DGO.
+    /// Durango (import-only historical spelling DGO).
     #[strum(serialize = "DGO")]
     DurangoLegacy,
     /// Durango.
     #[strum(serialize = "DUR")]
     Durango,
-    /// Nuevo Leon; import-only historical spelling NL.
+    /// Nuevo Leon (import-only historical spelling NL).
     #[strum(serialize = "NL")]
     NuevoLeonLegacy,
     /// Nuevo León.
@@ -104,7 +104,7 @@ pub enum PrimarySubdivision {
     /// Sonora.
     #[strum(serialize = "SON")]
     Sonora,
-    /// Tamaulipas; import-only historical spelling TMS.
+    /// Tamaulipas (import-only historical spelling TMS).
     #[strum(serialize = "TMS")]
     TamaulipasLegacy,
     /// Tamaulipas.
@@ -116,7 +116,7 @@ pub enum PrimarySubdivision {
     /// Campeche.
     #[strum(serialize = "CAM")]
     Campeche,
-    /// Chiapas; import-only historical spelling CHS.
+    /// Chiapas (import-only historical spelling CHS).
     #[strum(serialize = "CHS")]
     ChiapasLegacy,
     /// Chiapas.
@@ -128,7 +128,7 @@ pub enum PrimarySubdivision {
     /// Oaxaca.
     #[strum(serialize = "OAX")]
     Oaxaca,
-    /// Quintana Roo; import-only historical spelling QTR.
+    /// Quintana Roo (import-only historical spelling QTR).
     #[strum(serialize = "QTR")]
     QuintanaRooLegacy,
     /// Quintana Roo.

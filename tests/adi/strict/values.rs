@@ -261,7 +261,7 @@ fn locations_preserve_adif_components_and_direction_at_zero() {
 #[test]
 fn declared_text_uses_encoding_specific_rules() {
     // Literal accepted/rejected outcomes derive from the approved mode table.
-    // Each array is ordered ASCII, Latin-1, UTF-8.
+    // Each array gives ASCII, Latin-1, UTF-8 in that order.
     type TextCase<'a> = (&'a [u8], [bool; 3], [bool; 3], [bool; 3]);
     let cases: &[TextCase<'_>] = &[
         (

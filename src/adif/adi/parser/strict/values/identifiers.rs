@@ -143,7 +143,7 @@ pub(super) fn check(
             let number_start = program.len() + 1;
             for (index, byte) in number.bytes().enumerate() {
                 if !byte.is_ascii_digit() {
-                    // A malformed Unicode scalar is reported in full, not split at
+                    // Report the full malformed Unicode scalar. Do not split it at
                     // an invalid UTF-8 boundary before Latin-1 source mapping.
                     let start = number_start + index;
                     let end = text[start..]

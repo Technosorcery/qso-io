@@ -25,13 +25,13 @@ pub enum PrimarySubdivision {
     /// Flevoland.
     #[strum(serialize = "FL")]
     Flevoland,
-    /// Gelderland; import-only legacy code GD.
+    /// Gelderland (import-only legacy code GD).
     #[strum(serialize = "GD")]
     GelderlandLegacy,
     /// Gelderland.
     #[strum(serialize = "GE")]
     Gelderland,
-    /// Limburg; import-only legacy code LB.
+    /// Limburg (import-only legacy code LB).
     #[strum(serialize = "LB")]
     LimburgLegacy,
     /// Limburg.
@@ -43,7 +43,7 @@ pub enum PrimarySubdivision {
     /// Utrecht.
     #[strum(serialize = "UT")]
     Utrecht,
-    /// Zeeland; import-only legacy code ZL.
+    /// Zeeland (import-only legacy code ZL).
     #[strum(serialize = "ZL")]
     ZeelandLegacy,
     /// Zeeland.

@@ -4,7 +4,7 @@ use strum::{EnumIter, EnumString, IntoStaticStr};
 ///
 /// Deleted entities remain valid reference identities for historical contacts.
 /// [`Self::None`] explicitly means that the station is known to be outside a
-/// DXCC entity; an omitted DXCC field does not establish that fact.
+/// DXCC entity. An absent DXCC field does not establish that fact.
 ///
 /// Decimal codes are the ADIF wire values.
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, EnumIter, EnumString, IntoStaticStr)]
@@ -16,7 +16,7 @@ pub enum DxccEntity {
     /// Canada.
     #[strum(serialize = "1")]
     Canada,
-    /// Abu Ail Islands; deleted DXCC entity.
+    /// Abu Ail Islands (deleted DXCC entity).
     #[strum(serialize = "2")]
     AbuAilIslands,
     /// Afghanistan.
@@ -34,7 +34,7 @@ pub enum DxccEntity {
     /// Albania.
     #[strum(serialize = "7")]
     Albania,
-    /// Aldabra; deleted DXCC entity.
+    /// Aldabra (deleted DXCC entity).
     #[strum(serialize = "8")]
     Aldabra,
     /// American Samoa.
@@ -67,7 +67,7 @@ pub enum DxccEntity {
     /// Azerbaijan.
     #[strum(serialize = "18")]
     Azerbaijan,
-    /// Bajo Nuevo; deleted DXCC entity.
+    /// Bajo Nuevo (deleted DXCC entity).
     #[strum(serialize = "19")]
     BajoNuevo,
     /// Baker and Howland Islands.
@@ -79,28 +79,28 @@ pub enum DxccEntity {
     /// Palau.
     #[strum(serialize = "22")]
     Palau,
-    /// Blenheim Reef; deleted DXCC entity.
+    /// Blenheim Reef (deleted DXCC entity).
     #[strum(serialize = "23")]
     BlenheimReef,
     /// Bouvet.
     #[strum(serialize = "24")]
     Bouvet,
-    /// British North Borneo; deleted DXCC entity.
+    /// British North Borneo (deleted DXCC entity).
     #[strum(serialize = "25")]
     BritishNorthBorneo,
-    /// British Somaliland; deleted DXCC entity.
+    /// British Somaliland (deleted DXCC entity).
     #[strum(serialize = "26")]
     BritishSomaliland,
     /// Belarus.
     #[strum(serialize = "27")]
     Belarus,
-    /// Canal Zone; deleted DXCC entity.
+    /// Canal Zone (deleted DXCC entity).
     #[strum(serialize = "28")]
     CanalZone,
     /// Canary Islands.
     #[strum(serialize = "29")]
     CanaryIslands,
-    /// Celebe and Molucca Islands; deleted DXCC entity.
+    /// Celebe and Molucca Islands (deleted DXCC entity).
     #[strum(serialize = "30")]
     CelebeAndMoluccaIslands,
     /// C. Kiribati (British Phoenix Islands).
@@ -127,7 +127,7 @@ pub enum DxccEntity {
     /// Cocos (Keeling) Islands.
     #[strum(serialize = "38")]
     CocosKeelingIslands,
-    /// Comoros; deleted DXCC entity, distinct from code 411.
+    /// Comoros (deleted DXCC entity, distinct from code 411).
     #[strum(serialize = "39")]
     DeletedComoros,
     /// Crete.
@@ -136,13 +136,13 @@ pub enum DxccEntity {
     /// Crozet Island.
     #[strum(serialize = "41")]
     CrozetIsland,
-    /// Damao, Diu; deleted DXCC entity.
+    /// Damao, Diu (deleted DXCC entity).
     #[strum(serialize = "42")]
     DamaoDiu,
     /// Desecheo Island.
     #[strum(serialize = "43")]
     DesecheoIsland,
-    /// Desroches; deleted DXCC entity.
+    /// Desroches (deleted DXCC entity).
     #[strum(serialize = "44")]
     Desroches,
     /// Dodecanese.
@@ -175,19 +175,19 @@ pub enum DxccEntity {
     /// European Russia.
     #[strum(serialize = "54")]
     EuropeanRussia,
-    /// Farquhar; deleted DXCC entity.
+    /// Farquhar (deleted DXCC entity).
     #[strum(serialize = "55")]
     Farquhar,
     /// Fernando de Noronha.
     #[strum(serialize = "56")]
     FernandoDeNoronha,
-    /// French Equatorial Africa; deleted DXCC entity.
+    /// French Equatorial Africa (deleted DXCC entity).
     #[strum(serialize = "57")]
     FrenchEquatorialAfrica,
-    /// French Indo-China; deleted DXCC entity.
+    /// French Indo-China (deleted DXCC entity).
     #[strum(serialize = "58")]
     FrenchIndoChina,
-    /// French West Africa; deleted DXCC entity.
+    /// French West Africa (deleted DXCC entity).
     #[strum(serialize = "59")]
     FrenchWestAfrica,
     /// Bahamas.
@@ -211,10 +211,10 @@ pub enum DxccEntity {
     /// Belize.
     #[strum(serialize = "66")]
     Belize,
-    /// French India; deleted DXCC entity.
+    /// French India (deleted DXCC entity).
     #[strum(serialize = "67")]
     FrenchIndia,
-    /// Kuwait/Saudi Arabia Neutral Zone; deleted DXCC entity.
+    /// Kuwait/Saudi Arabia Neutral Zone (deleted DXCC entity).
     #[strum(serialize = "68")]
     KuwaitSaudiArabiaNeutralZone,
     /// Cayman Islands.
@@ -250,7 +250,7 @@ pub enum DxccEntity {
     /// Honduras.
     #[strum(serialize = "80")]
     Honduras,
-    /// Germany; deleted DXCC entity, distinct from code 230.
+    /// Germany (deleted DXCC entity, distinct from code 230).
     #[strum(serialize = "81")]
     DeletedGermany,
     /// Jamaica.
@@ -259,7 +259,7 @@ pub enum DxccEntity {
     /// Martinique.
     #[strum(serialize = "84")]
     Martinique,
-    /// Bonaire, Curacao; deleted DXCC entity.
+    /// Bonaire, Curacao (deleted DXCC entity).
     #[strum(serialize = "85")]
     BonaireCuracao,
     /// Nicaragua.
@@ -277,7 +277,7 @@ pub enum DxccEntity {
     /// Aruba.
     #[strum(serialize = "91")]
     Aruba,
-    /// Geyser Reef; deleted DXCC entity.
+    /// Geyser Reef (deleted DXCC entity).
     #[strum(serialize = "93")]
     GeyserReef,
     /// Antigua and Barbuda.
@@ -301,10 +301,10 @@ pub enum DxccEntity {
     /// Argentina.
     #[strum(serialize = "100")]
     Argentina,
-    /// Goa; deleted DXCC entity.
+    /// Goa (deleted DXCC entity).
     #[strum(serialize = "101")]
     Goa,
-    /// Gold Coast, Togoland; deleted DXCC entity.
+    /// Gold Coast, Togoland (deleted DXCC entity).
     #[strum(serialize = "102")]
     GoldCoastTogoland,
     /// Guam.
@@ -337,13 +337,13 @@ pub enum DxccEntity {
     /// Chile.
     #[strum(serialize = "112")]
     Chile,
-    /// Ifni; deleted DXCC entity.
+    /// Ifni (deleted DXCC entity).
     #[strum(serialize = "113")]
     Ifni,
     /// Isle of Man.
     #[strum(serialize = "114")]
     IsleOfMan,
-    /// Italian Somaliland; deleted DXCC entity.
+    /// Italian Somaliland (deleted DXCC entity).
     #[strum(serialize = "115")]
     ItalianSomaliland,
     /// Colombia.
@@ -355,7 +355,7 @@ pub enum DxccEntity {
     /// Jan Mayen.
     #[strum(serialize = "118")]
     JanMayen,
-    /// Java; deleted DXCC entity.
+    /// Java (deleted DXCC entity).
     #[strum(serialize = "119")]
     Java,
     /// Ecuador.
@@ -376,10 +376,10 @@ pub enum DxccEntity {
     /// Kaliningrad.
     #[strum(serialize = "126")]
     Kaliningrad,
-    /// Kamaran Islands; deleted DXCC entity.
+    /// Kamaran Islands (deleted DXCC entity).
     #[strum(serialize = "127")]
     KamaranIslands,
-    /// Karelo-Finnish Republic; deleted DXCC entity.
+    /// Karelo-Finnish Republic (deleted DXCC entity).
     #[strum(serialize = "128")]
     KareloFinnishRepublic,
     /// Guyana.
@@ -397,7 +397,7 @@ pub enum DxccEntity {
     /// Kermadec Islands.
     #[strum(serialize = "133")]
     KermadecIslands,
-    /// Kingman Reef; deleted DXCC entity.
+    /// Kingman Reef (deleted DXCC entity).
     #[strum(serialize = "134")]
     KingmanReef,
     /// Kyrgyzstan.
@@ -412,7 +412,7 @@ pub enum DxccEntity {
     /// Kure Island.
     #[strum(serialize = "138")]
     KureIsland,
-    /// Kuria Muria Island; deleted DXCC entity.
+    /// Kuria Muria Island (deleted DXCC entity).
     #[strum(serialize = "139")]
     KuriaMuriaIsland,
     /// Suriname.
@@ -448,7 +448,7 @@ pub enum DxccEntity {
     /// Australia.
     #[strum(serialize = "150")]
     Australia,
-    /// Malyj Vysotskij Island; deleted DXCC entity.
+    /// Malyj Vysotskij Island (deleted DXCC entity).
     #[strum(serialize = "151")]
     MalyjVysotskijIsland,
     /// Macao.
@@ -457,10 +457,10 @@ pub enum DxccEntity {
     /// Macquarie Island.
     #[strum(serialize = "153")]
     MacquarieIsland,
-    /// Yemen Arab Republic; deleted DXCC entity.
+    /// Yemen Arab Republic (deleted DXCC entity).
     #[strum(serialize = "154")]
     YemenArabRepublic,
-    /// Malaya; deleted DXCC entity.
+    /// Malaya (deleted DXCC entity).
     #[strum(serialize = "155")]
     Malaya,
     /// Nauru.
@@ -484,7 +484,7 @@ pub enum DxccEntity {
     /// Papua New Guinea.
     #[strum(serialize = "163")]
     PapuaNewGuinea,
-    /// Manchuria; deleted DXCC entity.
+    /// Manchuria (deleted DXCC entity).
     #[strum(serialize = "164")]
     Manchuria,
     /// Mauritius.
@@ -526,7 +526,7 @@ pub enum DxccEntity {
     /// Minami Torishima.
     #[strum(serialize = "177")]
     MinamiTorishima,
-    /// Minerva Reef; deleted DXCC entity.
+    /// Minerva Reef (deleted DXCC entity).
     #[strum(serialize = "178")]
     MinervaReef,
     /// Moldova.
@@ -541,16 +541,16 @@ pub enum DxccEntity {
     /// Navassa Island.
     #[strum(serialize = "182")]
     NavassaIsland,
-    /// Netherlands Borneo; deleted DXCC entity.
+    /// Netherlands Borneo (deleted DXCC entity).
     #[strum(serialize = "183")]
     NetherlandsBorneo,
-    /// Netherlands New Guinea; deleted DXCC entity.
+    /// Netherlands New Guinea (deleted DXCC entity).
     #[strum(serialize = "184")]
     NetherlandsNewGuinea,
     /// Solomon Islands.
     #[strum(serialize = "185")]
     SolomonIslands,
-    /// Newfoundland, Labrador; deleted DXCC entity.
+    /// Newfoundland, Labrador (deleted DXCC entity).
     #[strum(serialize = "186")]
     NewfoundlandLabrador,
     /// Niger.
@@ -571,28 +571,28 @@ pub enum DxccEntity {
     /// Ogasawara.
     #[strum(serialize = "192")]
     Ogasawara,
-    /// Okinawa (Ryukyu Islands); deleted DXCC entity.
+    /// Okinawa (Ryukyu Islands) (deleted DXCC entity).
     #[strum(serialize = "193")]
     Okinawa,
-    /// Okino Tori-Shima; deleted DXCC entity.
+    /// Okino Tori-Shima (deleted DXCC entity).
     #[strum(serialize = "194")]
     OkinoToriShima,
     /// Annobon Island.
     #[strum(serialize = "195")]
     AnnobonIsland,
-    /// Palestine; deleted DXCC entity, distinct from code 510.
+    /// Palestine (deleted DXCC entity, distinct from code 510).
     #[strum(serialize = "196")]
     DeletedPalestine,
     /// Palmyra and Jarvis Islands.
     #[strum(serialize = "197")]
     PalmyraAndJarvisIslands,
-    /// Papua Territory; deleted DXCC entity.
+    /// Papua Territory (deleted DXCC entity).
     #[strum(serialize = "198")]
     PapuaTerritory,
     /// Peter 1 Island.
     #[strum(serialize = "199")]
     PeterOneIsland,
-    /// Portuguese Timor; deleted DXCC entity.
+    /// Portuguese Timor (deleted DXCC entity).
     #[strum(serialize = "200")]
     PortugueseTimor,
     /// Prince Edward and Marion Islands.
@@ -616,13 +616,13 @@ pub enum DxccEntity {
     /// Rodrigues Island.
     #[strum(serialize = "207")]
     RodriguesIsland,
-    /// Ruanda-Urundi; deleted DXCC entity.
+    /// Ruanda-Urundi (deleted DXCC entity).
     #[strum(serialize = "208")]
     RuandaUrundi,
     /// Belgium.
     #[strum(serialize = "209")]
     Belgium,
-    /// Saar; deleted DXCC entity.
+    /// Saar (deleted DXCC entity).
     #[strum(serialize = "210")]
     Saar,
     /// Sable Island.
@@ -646,13 +646,13 @@ pub enum DxccEntity {
     /// San Felix and San Ambrosio.
     #[strum(serialize = "217")]
     SanFelixAndSanAmbrosio,
-    /// Czechoslovakia; deleted DXCC entity.
+    /// Czechoslovakia (deleted DXCC entity).
     #[strum(serialize = "218")]
     Czechoslovakia,
     /// Sao Tome and Principe.
     #[strum(serialize = "219")]
     SaoTomeAndPrincipe,
-    /// Sarawak; deleted DXCC entity.
+    /// Sarawak (deleted DXCC entity).
     #[strum(serialize = "220")]
     Sarawak,
     /// Denmark.
@@ -670,22 +670,22 @@ pub enum DxccEntity {
     /// Sardinia.
     #[strum(serialize = "225")]
     Sardinia,
-    /// Saudi Arabia/Iraq Neutral Zone; deleted DXCC entity.
+    /// Saudi Arabia/Iraq Neutral Zone (deleted DXCC entity).
     #[strum(serialize = "226")]
     SaudiArabiaIraqNeutralZone,
     /// France.
     #[strum(serialize = "227")]
     France,
-    /// Serrana Bank and Roncador Cay; deleted DXCC entity.
+    /// Serrana Bank and Roncador Cay (deleted DXCC entity).
     #[strum(serialize = "228")]
     SerranaBankAndRoncadorCay,
-    /// German Democratic Republic; deleted DXCC entity.
+    /// German Democratic Republic (deleted DXCC entity).
     #[strum(serialize = "229")]
     GermanDemocraticRepublic,
     /// Federal Republic of Germany.
     #[strum(serialize = "230")]
     FederalRepublicOfGermany,
-    /// Sikkim; deleted DXCC entity.
+    /// Sikkim (deleted DXCC entity).
     #[strum(serialize = "231")]
     Sikkim,
     /// Somalia.
@@ -721,10 +721,10 @@ pub enum DxccEntity {
     /// Iceland.
     #[strum(serialize = "242")]
     Iceland,
-    /// People's Democratic Republic of Yemen; deleted DXCC entity.
+    /// People's Democratic Republic of Yemen (deleted DXCC entity).
     #[strum(serialize = "243")]
     PeoplesDemocraticRepublicOfYemen,
-    /// Southern Sudan; deleted DXCC entity, distinct from code 521.
+    /// Southern Sudan (deleted DXCC entity, distinct from code 521).
     #[strum(serialize = "244")]
     SouthernSudan,
     /// Ireland.
@@ -757,7 +757,7 @@ pub enum DxccEntity {
     /// Luxembourg.
     #[strum(serialize = "254")]
     Luxembourg,
-    /// St. Maarten, Saba, St. Eustatius; deleted DXCC entity.
+    /// St. Maarten, Saba, St. Eustatius (deleted DXCC entity).
     #[strum(serialize = "255")]
     StMaartenSabaStEustatius,
     /// Madeira Islands.
@@ -766,7 +766,7 @@ pub enum DxccEntity {
     /// Malta.
     #[strum(serialize = "257")]
     Malta,
-    /// Sumatra; deleted DXCC entity.
+    /// Sumatra (deleted DXCC entity).
     #[strum(serialize = "258")]
     Sumatra,
     /// Svalbard.
@@ -775,7 +775,7 @@ pub enum DxccEntity {
     /// Monaco.
     #[strum(serialize = "260")]
     Monaco,
-    /// Swan Islands; deleted DXCC entity.
+    /// Swan Islands (deleted DXCC entity).
     #[strum(serialize = "261")]
     SwanIslands,
     /// Tajikistan.
@@ -784,7 +784,7 @@ pub enum DxccEntity {
     /// Netherlands.
     #[strum(serialize = "263")]
     Netherlands,
-    /// Tangier; deleted DXCC entity.
+    /// Tangier (deleted DXCC entity).
     #[strum(serialize = "264")]
     Tangier,
     /// Northern Ireland.
@@ -793,10 +793,10 @@ pub enum DxccEntity {
     /// Norway.
     #[strum(serialize = "266")]
     Norway,
-    /// Territory of New Guinea; deleted DXCC entity.
+    /// Territory of New Guinea (deleted DXCC entity).
     #[strum(serialize = "267")]
     TerritoryOfNewGuinea,
-    /// Tibet; deleted DXCC entity.
+    /// Tibet (deleted DXCC entity).
     #[strum(serialize = "268")]
     Tibet,
     /// Poland.
@@ -805,7 +805,7 @@ pub enum DxccEntity {
     /// Tokelau Islands.
     #[strum(serialize = "270")]
     TokelauIslands,
-    /// Trieste; deleted DXCC entity.
+    /// Trieste (deleted DXCC entity).
     #[strum(serialize = "271")]
     Trieste,
     /// Portugal.
@@ -907,7 +907,7 @@ pub enum DxccEntity {
     /// Bhutan.
     #[strum(serialize = "306")]
     Bhutan,
-    /// Zanzibar; deleted DXCC entity.
+    /// Zanzibar (deleted DXCC entity).
     #[strum(serialize = "307")]
     Zanzibar,
     /// Costa Rica.
@@ -1132,7 +1132,7 @@ pub enum DxccEntity {
     /// Togo.
     #[strum(serialize = "483")]
     Togo,
-    /// Walvis Bay; deleted DXCC entity.
+    /// Walvis Bay (deleted DXCC entity).
     #[strum(serialize = "488")]
     WalvisBay,
     /// Conway Reef.
@@ -1144,7 +1144,7 @@ pub enum DxccEntity {
     /// Yemen.
     #[strum(serialize = "492")]
     Yemen,
-    /// Penguin Islands; deleted DXCC entity.
+    /// Penguin Islands (deleted DXCC entity).
     #[strum(serialize = "493")]
     PenguinIslands,
     /// Croatia.

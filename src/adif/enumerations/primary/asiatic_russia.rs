@@ -1,7 +1,7 @@
 //! Asiatic Russia primary subdivisions, DXCC entity 15.
 use strum::{EnumIter, EnumString, IntoStaticStr};
 
-/// An Asiatic Russia primary subdivision, retaining ADIF's historical identities.
+/// An Asiatic Russia primary subdivision, with ADIF's historical identities.
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq, EnumIter, EnumString, IntoStaticStr)]
 #[strum(ascii_case_insensitive)]
 pub enum PrimarySubdivision {
@@ -102,7 +102,7 @@ pub enum PrimarySubdivision {
     /// Irkutsk (Irkutskaya oblast).
     #[strum(serialize = "IR")]
     Irkutsk,
-    /// Zabaykalsky Kraj; called Chita (Chitinskaya oblast) before 2008-03-01.
+    /// Zabaykalsky Kraj (Chita (Chitinskaya oblast) before 2008-03-01).
     #[strum(serialize = "CT")]
     Zabaykalsky,
     /// Republic of Khakassia.

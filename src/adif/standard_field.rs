@@ -41,7 +41,7 @@ pub enum StandardField {
     /// Version of the program that created or processed the file.
     #[strum(serialize = "PROGRAMVERSION")]
     ProgramVersion,
-    /// Complete postal address of the contacted station, including its name.
+    /// Complete postal address of the contacted station, with its name.
     #[strum(serialize = "ADDRESS")]
     Address,
     /// International-text postal address of the contacted station.
@@ -54,11 +54,11 @@ pub enum StandardField {
     #[strum(serialize = "ALTITUDE")]
     Altitude,
     /// Logging antenna's azimuth in clockwise degrees from true north, 0 through 360.
-    /// Out-of-range imports must be normalized before export.
+    /// An exporter must normalize out-of-range imports before export.
     #[strum(serialize = "ANT_AZ")]
     AntAz,
     /// Logging antenna's elevation in degrees above the horizon, -90 through 90.
-    /// Out-of-range imports must be normalized before export.
+    /// An exporter must normalize out-of-range imports before export.
     #[strum(serialize = "ANT_EL")]
     AntEl,
     /// Signal path used for the contact, such as short path or long path.
@@ -67,10 +67,12 @@ pub enum StandardField {
     /// ARRL section of the contacted station.
     #[strum(serialize = "ARRL_SECT")]
     ArrlSect,
-    /// Sponsored awards submitted; this can describe an award account outside a QSO.
+    /// Sponsored awards submitted.
+    /// This can describe an award account outside a QSO.
     #[strum(serialize = "AWARD_SUBMITTED")]
     AwardSubmitted,
-    /// Sponsored awards granted; this can describe an award account outside a QSO.
+    /// Sponsored awards granted.
+    /// This can describe an award account outside a QSO.
     #[strum(serialize = "AWARD_GRANTED")]
     AwardGranted,
     /// Geomagnetic A index at contact time, from 0 through 400.
@@ -97,13 +99,14 @@ pub enum StandardField {
     /// Upload status of this contact on Club Log.
     #[strum(serialize = "CLUBLOG_QSO_UPLOAD_STATUS")]
     ClublogQsoUploadStatus,
-    /// Contacted station's secondary subdivision, interpreted using its DXCC entity.
+    /// Contacted station's secondary subdivision in the context of its DXCC entity.
     #[strum(serialize = "CNTY")]
     Cnty,
     /// Unordered secondary subdivision alternative codes for the contacted station.
     #[strum(serialize = "CNTY_ALT")]
     CntyAlt,
-    /// Contact comment intended to interest the contacted operator; QSL text uses QSLMSG.
+    /// Contact comment intended to interest the contacted operator.
+    /// QSL text uses QSLMSG.
     #[strum(serialize = "COMMENT")]
     Comment,
     /// International-text contact comment, distinct from a QSL message.
@@ -115,7 +118,8 @@ pub enum StandardField {
     /// Callsign of the person operating the contacted station.
     #[strum(serialize = "CONTACTED_OP")]
     ContactedOp,
-    /// Contest identifier; the recommended enumeration improves interoperability.
+    /// Contest identifier.
+    /// The recommended enumeration improves interoperability.
     #[strum(serialize = "CONTEST_ID")]
     ContestId,
     /// Name of the contacted station's DXCC entity.
@@ -127,10 +131,12 @@ pub enum StandardField {
     /// Contacted station's CQ zone, from 1 through 40.
     #[strum(serialize = "CQZ")]
     Cqz,
-    /// Credits requested for this contact; legacy AwardList values are import-only.
+    /// Credits requested for this contact.
+    /// Legacy AwardList values are import-only.
     #[strum(serialize = "CREDIT_SUBMITTED")]
     CreditSubmitted,
-    /// Credits granted for this contact; legacy AwardList values are import-only.
+    /// Credits granted for this contact.
+    /// Legacy AwardList values are import-only.
     #[strum(serialize = "CREDIT_GRANTED")]
     CreditGranted,
     /// Contacted station's DARC district code, from DARC's DOK or special DOK lists.
@@ -142,16 +148,19 @@ pub enum StandardField {
     /// Date a confirmation was sent to DCL, conditional on its sent status.
     #[strum(serialize = "DCL_QSLSDATE")]
     DclQslsdate,
-    /// DCL confirmation received status; the default is N.
+    /// DCL confirmation received status.
+    /// The default is N.
     #[strum(serialize = "DCL_QSL_RCVD")]
     DclQslRcvd,
-    /// DCL confirmation sent status; the default is N.
+    /// DCL confirmation sent status.
+    /// The default is N.
     #[strum(serialize = "DCL_QSL_SENT")]
     DclQslSent,
     /// Nonnegative path distance between the stations, in kilometers.
     #[strum(serialize = "DISTANCE")]
     Distance,
-    /// Contacted station's DXCC entity code; zero explicitly means no DXCC entity.
+    /// Contacted station's DXCC entity code.
+    /// Zero explicitly means no DXCC entity.
     #[strum(serialize = "DXCC")]
     Dxcc,
     /// Email address of the contacted station.
@@ -160,7 +169,8 @@ pub enum StandardField {
     /// Callsign of the owner of the contacted station.
     #[strum(serialize = "EQ_CALL")]
     EqCall,
-    /// Whether eQSL Authenticity Guaranteed status is known; the default is U.
+    /// Whether eQSL Authenticity Guaranteed status is known.
+    /// The default is U.
     #[strum(serialize = "EQSL_AG")]
     EqslAg,
     /// Date an eQSL.cc confirmation was received, conditional on its received status.
@@ -169,10 +179,12 @@ pub enum StandardField {
     /// Date a confirmation was sent to eQSL.cc, conditional on its sent status.
     #[strum(serialize = "EQSL_QSLSDATE")]
     EqslQslsdate,
-    /// eQSL.cc confirmation received status; verified V is import-only.
+    /// eQSL.cc confirmation received status.
+    /// Verified V is import-only.
     #[strum(serialize = "EQSL_QSL_RCVD")]
     EqslQslRcvd,
-    /// eQSL.cc confirmation sent status; the default is N.
+    /// eQSL.cc confirmation sent status.
+    /// The default is N.
     #[strum(serialize = "EQSL_QSL_SENT")]
     EqslQslSent,
     /// Positive FISTS CW Club membership number of the contacted station.
@@ -190,15 +202,17 @@ pub enum StandardField {
     /// Logging station's receive frequency in megahertz for a split contact.
     #[strum(serialize = "FREQ_RX")]
     FreqRx,
-    /// Contacted station's Maidenhead locator, using 2, 4, 6, or 8 characters.
+    /// Contacted station's Maidenhead locator with 2, 4, 6, or 8 characters.
     /// Longer locators use the extension field for the remaining characters.
     #[strum(serialize = "GRIDSQUARE")]
     Gridsquare,
     /// Characters 9 through 10 or 12 of the contacted station's Maidenhead locator.
-    /// Export uses 2 or 4 characters; imports ignore characters beyond the fourth.
+    /// Export uses 2 or 4 characters.
+    /// Imports ignore characters beyond the fourth.
     #[strum(serialize = "GRIDSQUARE_EXT")]
     GridsquareExt,
-    /// Legacy logging operator callsign; import-only, superseded by OPERATOR.
+    /// Legacy logging operator callsign.
+    /// Import-only. The replacement is OPERATOR.
     #[strum(serialize = "GUEST_OP")]
     GuestOp,
     /// Date of the most recent upload of this contact to HAMLOG.EU.
@@ -243,10 +257,12 @@ pub enum StandardField {
     /// Date a confirmation was sent to Logbook of the World, subject to its status.
     #[strum(serialize = "LOTW_QSLSDATE")]
     LotwQslsdate,
-    /// Logbook of the World confirmation received status; verified V is import-only.
+    /// Logbook of the World confirmation received status.
+    /// Verified V is import-only.
     #[strum(serialize = "LOTW_QSL_RCVD")]
     LotwQslRcvd,
-    /// Logbook of the World confirmation sent status; the default is N.
+    /// Logbook of the World confirmation sent status.
+    /// The default is N.
     #[strum(serialize = "LOTW_QSL_SENT")]
     LotwQslSent,
     /// Longest meteor-scatter burst heard by the logging station, in nonnegative seconds.
@@ -282,7 +298,7 @@ pub enum StandardField {
     /// International-text city of the logging station.
     #[strum(serialize = "MY_CITY_INTL")]
     MyCityIntl,
-    /// Logging station's secondary subdivision, interpreted using its DXCC entity.
+    /// Logging station's secondary subdivision in the context of its DXCC entity.
     #[strum(serialize = "MY_CNTY")]
     MyCnty,
     /// Unordered secondary subdivision alternative codes for the logging station.
@@ -300,17 +316,19 @@ pub enum StandardField {
     /// Logging station's DARC district code, from DARC's DOK or special DOK lists.
     #[strum(serialize = "MY_DARC_DOK")]
     MyDarcDok,
-    /// Logging station's DXCC entity code; zero explicitly means no DXCC entity.
+    /// Logging station's DXCC entity code.
+    /// Zero explicitly means no DXCC entity.
     #[strum(serialize = "MY_DXCC")]
     MyDxcc,
     /// Positive FISTS CW Club membership number of the logging station.
     #[strum(serialize = "MY_FISTS")]
     MyFists,
-    /// Logging station's Maidenhead locator, using 2, 4, 6, or 8 characters.
+    /// Logging station's Maidenhead locator with 2, 4, 6, or 8 characters.
     #[strum(serialize = "MY_GRIDSQUARE")]
     MyGridsquare,
     /// Characters 9 through 10 or 12 of the logging station's Maidenhead locator.
-    /// Export uses 2 or 4 characters; imports ignore characters beyond the fourth.
+    /// Export uses 2 or 4 characters.
+    /// Imports ignore characters beyond the fourth.
     #[strum(serialize = "MY_GRIDSQUARE_EXT")]
     MyGridsquareExt,
     /// Logging station's IOTA group reference.
@@ -370,7 +388,7 @@ pub enum StandardField {
     /// International Summits on the Air reference of the logging station.
     #[strum(serialize = "MY_SOTA_REF")]
     MySotaRef,
-    /// Logging station's primary subdivision code, interpreted using its DXCC entity.
+    /// Logging station's primary subdivision code in the context of its DXCC entity.
     #[strum(serialize = "MY_STATE")]
     MyState,
     /// Street address of the logging station.
@@ -407,7 +425,8 @@ pub enum StandardField {
     /// Nonnegative count of meteor-scatter pings heard by the logging station.
     #[strum(serialize = "NR_PINGS")]
     NrPings,
-    /// Logging operator's callsign; also supplies the station callsign when absent.
+    /// Logging operator's callsign.
+    /// If the station callsign is absent, the operator callsign supplies it.
     #[strum(serialize = "OPERATOR")]
     Operator,
     /// Callsign of the owner hosting the logging operator.
@@ -456,16 +475,20 @@ pub enum StandardField {
     /// Date a QSL was sent, conditional on the sent status.
     #[strum(serialize = "QSLSDATE")]
     Qslsdate,
-    /// QSL received status; the default is N and verified V is import-only.
+    /// QSL received status.
+    /// The default is N and verified V is import-only.
     #[strum(serialize = "QSL_RCVD")]
     QslRcvd,
-    /// How the received QSL was, or is intended to be, conveyed; manager M is import-only.
+    /// The actual or intended route of the received QSL.
+    /// Manager M is import-only.
     #[strum(serialize = "QSL_RCVD_VIA")]
     QslRcvdVia,
-    /// QSL sent status; the default is N.
+    /// QSL sent status.
+    /// The default is N.
     #[strum(serialize = "QSL_SENT")]
     QslSent,
-    /// How the sent QSL was, or is intended to be, conveyed; manager M is import-only.
+    /// The actual or intended route of the sent QSL.
+    /// Manager M is import-only.
     #[strum(serialize = "QSL_SENT_VIA")]
     QslSentVia,
     /// QSL routing information for the contacted station.
@@ -491,7 +514,8 @@ pub enum StandardField {
     #[strum(serialize = "QTH_INTL")]
     QthIntl,
     /// WAE or CQ entity within the contacted station's DXCC entity.
-    /// Explicit None means the DXCC entity itself; absence carries no inference.
+    /// Explicit None means the DXCC entity itself.
+    /// Absence carries no inference.
     #[strum(serialize = "REGION")]
     Region,
     /// Description of the contacted station's equipment.
@@ -542,22 +566,26 @@ pub enum StandardField {
     /// Nonnegative contest serial number received.
     #[strum(serialize = "SRX")]
     Srx,
-    /// Received contest exchange in Cabrillo form; dedicated contest fields prevail.
+    /// Received contest exchange in Cabrillo form.
+    /// Dedicated contest fields prevail.
     #[strum(serialize = "SRX_STRING")]
     SrxString,
-    /// Contacted station's primary subdivision code, interpreted using its DXCC entity.
+    /// Contacted station's primary subdivision code in the context of its DXCC entity.
     #[strum(serialize = "STATE")]
     State,
-    /// Callsign used on air by the logging station; falls back to the operator callsign.
+    /// Callsign used on air by the logging station.
+    /// If the station callsign is absent, the operator callsign supplies it.
     #[strum(serialize = "STATION_CALLSIGN")]
     StationCallsign,
     /// Nonnegative contest serial number transmitted.
     #[strum(serialize = "STX")]
     Stx,
-    /// Transmitted contest exchange in Cabrillo form; dedicated contest fields prevail.
+    /// Transmitted contest exchange in Cabrillo form.
+    /// Dedicated contest fields prevail.
     #[strum(serialize = "STX_STRING")]
     StxString,
-    /// Operating submode; the recommended values depend on MODE.
+    /// Operating submode.
+    /// The recommended values depend on MODE.
     #[strum(serialize = "SUBMODE")]
     Submode,
     /// Whether the record describes a shortwave listener report.
@@ -566,7 +594,8 @@ pub enum StandardField {
     /// Positive Ten-Ten membership number.
     #[strum(serialize = "TEN_TEN")]
     TenTen,
-    /// UTC end time as HHMM or HHMMSS; without an end date, duration is under 24 hours.
+    /// UTC end time as HHMM or HHMMSS.
+    /// Without an end date, duration is under 24 hours.
     #[strum(serialize = "TIME_OFF")]
     TimeOff,
     /// UTC start time as HHMM or HHMMSS.
@@ -581,7 +610,8 @@ pub enum StandardField {
     /// Two contacted-station border counties credited for the USA-CA award.
     #[strum(serialize = "USACA_COUNTIES")]
     UsacaCounties,
-    /// Legacy Canadian province; import-only, superseded by STATE.
+    /// Legacy Canadian province.
+    /// Import-only. The replacement is STATE.
     #[strum(serialize = "VE_PROV")]
     VeProv,
     /// Two or four adjacent contacted-station grid locators credited for VUCC.

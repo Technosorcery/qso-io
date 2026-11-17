@@ -10,7 +10,7 @@ use super::{Input, field, fields};
 use crate::adif::adi::lookup::LookupError;
 use crate::adif::adi::lookup::single_match;
 
-/// A complete framed ADI record preserving every supplied field in source order.
+/// A complete framed ADI record with every supplied field in source order.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PermissiveRecord<'a> {
     pub(in crate::adif::adi::parser) span: Range<usize>,
@@ -18,7 +18,9 @@ pub struct PermissiveRecord<'a> {
 }
 
 impl<'a> PermissiveRecord<'a> {
-    /// Finds a field by ASCII case-insensitive name, reporting ambiguous matches.
+    /// Finds a field by ASCII case-insensitive name.
+    ///
+    /// Multiple matches produce an ambiguity error.
     pub fn field(&self, name: &str) -> Result<Option<&PermissiveField<'a>>, LookupError> {
         single_match(
             name,
@@ -27,7 +29,7 @@ impl<'a> PermissiveRecord<'a> {
         )
     }
 
-    /// Iterates over all matching fields in source order without choosing precedence.
+    /// Iterates over all matching fields in source order without a precedence rule.
     pub fn fields_named<'s>(&'s self, name: &str) -> impl Iterator<Item = &'s PermissiveField<'a>> {
         self.fields
             .iter()

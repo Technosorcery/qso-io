@@ -10,182 +10,182 @@ use crate::adif::primary_subdivisions::united_states::PrimarySubdivision as UsSt
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, EnumIter, EnumString, IntoStaticStr)]
 #[strum(ascii_case_insensitive)]
 pub enum AlaskaCounty {
-    /// Aleutians East, Alaska; Third Judicial District.
+    /// Aleutians East, Alaska, Third Judicial District.
     #[strum(serialize = "Aleutians East")]
     AleutiansEast,
-    /// Aleutians Islands, Alaska; deleted; Third Judicial District.
+    /// Aleutians Islands, Alaska (deleted), Third Judicial District.
     #[strum(serialize = "Aleutians Islands")]
     AleutiansIslands,
-    /// Aleutians West, Alaska; Third Judicial District.
+    /// Aleutians West, Alaska, Third Judicial District.
     #[strum(serialize = "Aleutians West")]
     AleutiansWest,
-    /// Anchorage, Alaska; Third Judicial District.
+    /// Anchorage, Alaska, Third Judicial District.
     #[strum(serialize = "Anchorage")]
     Anchorage,
-    /// Angoon, Alaska; deleted; First Judicial District.
+    /// Angoon, Alaska (deleted), First Judicial District.
     #[strum(serialize = "Angoon")]
     Angoon,
-    /// Barrow, Alaska; deleted; Second Judicial District.
+    /// Barrow, Alaska (deleted), Second Judicial District.
     #[strum(serialize = "Barrow")]
     Barrow,
-    /// Bethel, Alaska; Fourth Judicial District.
+    /// Bethel, Alaska, Fourth Judicial District.
     #[strum(serialize = "Bethel")]
     Bethel,
-    /// Bristol Bay, Alaska; Third Judicial District.
+    /// Bristol Bay, Alaska, Third Judicial District.
     #[strum(serialize = "Bristol Bay")]
     BristolBay,
-    /// Cordova-McCarthy, Alaska; deleted; Third Judicial District.
+    /// Cordova-McCarthy, Alaska (deleted), Third Judicial District.
     #[strum(serialize = "Cordova-McCarthy")]
     CordovaMcCarthy,
-    /// Denali, Alaska; Fourth Judicial District.
+    /// Denali, Alaska, Fourth Judicial District.
     #[strum(serialize = "Denali")]
     Denali,
-    /// Dillingham, Alaska; Third Judicial District.
+    /// Dillingham, Alaska, Third Judicial District.
     #[strum(serialize = "Dillingham")]
     Dillingham,
-    /// Fairbanks, Alaska; Fourth Judicial District.
+    /// Fairbanks, Alaska, Fourth Judicial District.
     #[strum(serialize = "Fairbanks")]
     Fairbanks,
-    /// Fairbanks North Star, Alaska; Fourth Judicial District.
+    /// Fairbanks North Star, Alaska, Fourth Judicial District.
     #[strum(serialize = "Fairbanks North Star")]
     FairbanksNorthStar,
-    /// First Judicial District, Alaska; deleted; First Judicial District.
+    /// First Judicial District, Alaska (deleted), First Judicial District.
     #[strum(serialize = "First Judicial District")]
     FirstJudicialDistrict,
-    /// Fourth Judicial District, Alaska; deleted; Fourth Judicial District.
+    /// Fourth Judicial District, Alaska (deleted), Fourth Judicial District.
     #[strum(serialize = "Fourth Judicial District")]
     FourthJudicialDistrict,
-    /// Haines, Alaska; First Judicial District.
+    /// Haines, Alaska, First Judicial District.
     #[strum(serialize = "Haines")]
     Haines,
-    /// Juneau, Alaska; First Judicial District.
+    /// Juneau, Alaska, First Judicial District.
     #[strum(serialize = "Juneau")]
     Juneau,
-    /// Hoonah-Angoon, Alaska; First Judicial District.
+    /// Hoonah-Angoon, Alaska, First Judicial District.
     #[strum(serialize = "Hoonah-Angoon")]
     HoonahAngoon,
-    /// Kenai Peninsula, Alaska; Third Judicial District.
+    /// Kenai Peninsula, Alaska, Third Judicial District.
     #[strum(serialize = "Kenai Peninsula")]
     KenaiPeninsula,
-    /// Kenai-Cook Inlet, Alaska; deleted; Third Judicial District.
+    /// Kenai-Cook Inlet, Alaska (deleted), Third Judicial District.
     #[strum(serialize = "Kenai-Cook Inlet")]
     KenaiCookInlet,
-    /// Ketchikan, Alaska; deleted; First Judicial District.
+    /// Ketchikan, Alaska (deleted), First Judicial District.
     #[strum(serialize = "Ketchikan")]
     Ketchikan,
-    /// Ketchikan Gateway, Alaska; First Judicial District.
+    /// Ketchikan Gateway, Alaska, First Judicial District.
     #[strum(serialize = "Ketchikan Gateway")]
     KetchikanGateway,
-    /// Kobuk, Alaska; deleted; Second Judicial District.
+    /// Kobuk, Alaska (deleted), Second Judicial District.
     #[strum(serialize = "Kobuk")]
     Kobuk,
-    /// Kodiak Island, Alaska; Third Judicial District.
+    /// Kodiak Island, Alaska, Third Judicial District.
     #[strum(serialize = "Kodiak Island")]
     KodiakIsland,
-    /// Kuskokwim, Alaska; deleted; Fourth Judicial District.
+    /// Kuskokwim, Alaska (deleted), Fourth Judicial District.
     #[strum(serialize = "Kuskokwim")]
     Kuskokwim,
-    /// Kusilvak, Alaska; Second Judicial District.
+    /// Kusilvak, Alaska, Second Judicial District.
     #[strum(serialize = "Kusilvak")]
     Kusilvak,
-    /// Lake and Peninsula, Alaska; Third Judicial District.
+    /// Lake and Peninsula, Alaska, Third Judicial District.
     #[strum(serialize = "Lake and Peninsula")]
     LakeAndPeninsula,
-    /// Lynn Canal-Icy Straits, Alaska; deleted; First Judicial District.
+    /// Lynn Canal-Icy Straits, Alaska (deleted), First Judicial District.
     #[strum(serialize = "Lynn Canal-Icy Straits")]
     LynnCanalIcyStraits,
-    /// Matanuska-Susitna, Alaska; Third Judicial District.
+    /// Matanuska-Susitna, Alaska, Third Judicial District.
     #[strum(serialize = "Matanuska-Susitna")]
     MatanuskaSusitna,
-    /// Nome, Alaska; Second Judicial District.
+    /// Nome, Alaska, Second Judicial District.
     #[strum(serialize = "Nome")]
     Nome,
-    /// North Slope, Alaska; Second Judicial District.
+    /// North Slope, Alaska, Second Judicial District.
     #[strum(serialize = "North Slope")]
     NorthSlope,
-    /// Northwest Arctic, Alaska; Second Judicial District.
+    /// Northwest Arctic, Alaska, Second Judicial District.
     #[strum(serialize = "Northwest Arctic")]
     NorthwestArctic,
-    /// Outer Ketchikan, Alaska; deleted; First Judicial District.
+    /// Outer Ketchikan, Alaska (deleted), First Judicial District.
     #[strum(serialize = "Outer Ketchikan")]
     OuterKetchikan,
-    /// Palmer-Wasilla-Talkeetna, Alaska; deleted; Third Judicial District.
+    /// Palmer-Wasilla-Talkeetna, Alaska (deleted), Third Judicial District.
     #[strum(serialize = "Palmer-Wasilla-Talkeetna")]
     PalmerWasillaTalkeetna,
-    /// Petersburg, Alaska; First Judicial District.
+    /// Petersburg, Alaska, First Judicial District.
     #[strum(serialize = "Petersburg")]
     Petersburg,
-    /// Pribilof Islands, Alaska; Third Judicial District.
+    /// Pribilof Islands, Alaska, Third Judicial District.
     #[strum(serialize = "Pribilof Islands")]
     PribilofIslands,
-    /// Prince of Wales, Alaska; deleted; First Judicial District.
+    /// Prince of Wales, Alaska (deleted), First Judicial District.
     #[strum(serialize = "Prince of Wales")]
     PrinceOfWales,
-    /// Prince of Wales-Hyder, Alaska; First Judicial District.
+    /// Prince of Wales-Hyder, Alaska, First Judicial District.
     #[strum(serialize = "Prince of Wales-Hyder")]
     PrinceOfWalesHyder,
-    /// Prince of Wales-Outer Ketchikan, Alaska; deleted; First Judicial District.
+    /// Prince of Wales-Outer Ketchikan, Alaska (deleted), First Judicial District.
     #[strum(serialize = "Prince of Wales-Outer Ketchikan")]
     PrinceOfWalesOuterKetchikan,
-    /// Saint Matthew Island, Alaska; Fourth Judicial District.
+    /// Saint Matthew Island, Alaska, Fourth Judicial District.
     #[strum(serialize = "Saint Matthew Island")]
     SaintMatthewIsland,
-    /// Second Judicial District, Alaska; deleted; Second Judicial District.
+    /// Second Judicial District, Alaska (deleted), Second Judicial District.
     #[strum(serialize = "Second Judicial District")]
     SecondJudicialDistrict,
-    /// Seward, Alaska; deleted; Third Judicial District.
+    /// Seward, Alaska (deleted), Third Judicial District.
     #[strum(serialize = "Seward")]
     Seward,
-    /// Sitka, Alaska; First Judicial District.
+    /// Sitka, Alaska, First Judicial District.
     #[strum(serialize = "Sitka")]
     Sitka,
-    /// Skagway-Hoonah-Angoon, Alaska; deleted; First Judicial District.
+    /// Skagway-Hoonah-Angoon, Alaska (deleted), First Judicial District.
     #[strum(serialize = "Skagway-Hoonah-Angoon")]
     SkagwayHoonahAngoon,
-    /// Skagway, Alaska; First Judicial District.
+    /// Skagway, Alaska, First Judicial District.
     #[strum(serialize = "Skagway")]
     Skagway,
-    /// Skagway-Yakutat, Alaska; deleted; First Judicial District.
+    /// Skagway-Yakutat, Alaska (deleted), First Judicial District.
     ///
     /// The ADIF county spelling is `Skagway-Yakuta`, without the final `t`.
     #[strum(serialize = "Skagway-Yakuta")]
     SkagwayYakutat,
-    /// Skagway-Yakutat-Angoon, Alaska; deleted; First Judicial District.
+    /// Skagway-Yakutat-Angoon, Alaska (deleted), First Judicial District.
     #[strum(serialize = "Skagway-Yakutat-Angoon")]
     SkagwayYakutatAngoon,
-    /// Southeast Fairbanks, Alaska; Fourth Judicial District.
+    /// Southeast Fairbanks, Alaska, Fourth Judicial District.
     #[strum(serialize = "Southeast Fairbanks")]
     SoutheastFairbanks,
-    /// Third Judicial District, Alaska; deleted.
+    /// Third Judicial District, Alaska (deleted).
     ///
     /// The ADIF source classifies this identity under the Second Judicial District.
     #[strum(serialize = "Third Judicial District")]
     ThirdJudicialDistrict,
-    /// Upper Yukon, Alaska; deleted; Fourth Judicial District.
+    /// Upper Yukon, Alaska (deleted), Fourth Judicial District.
     #[strum(serialize = "Upper Yukon")]
     UpperYukon,
-    /// Valdez-Chitina-Whittier, Alaska; deleted; Third Judicial District.
+    /// Valdez-Chitina-Whittier, Alaska (deleted), Third Judicial District.
     #[strum(serialize = "Valdez-Chitina-Whittier")]
     ValdezChitinaWhittier,
-    /// Valdez-Cordova, Alaska; Third Judicial District.
+    /// Valdez-Cordova, Alaska, Third Judicial District.
     #[strum(serialize = "Valdez-Cordova")]
     ValdezCordova,
-    /// Wade Hampton, Alaska; deleted; Second Judicial District.
+    /// Wade Hampton, Alaska (deleted), Second Judicial District.
     #[strum(serialize = "Wade Hampton")]
     WadeHampton,
-    /// Wales-Hyder, Alaska; First Judicial District.
+    /// Wales-Hyder, Alaska, First Judicial District.
     #[strum(serialize = "Wales-Hyder")]
     WalesHyder,
-    /// Wrangell, Alaska; First Judicial District.
+    /// Wrangell, Alaska, First Judicial District.
     #[strum(serialize = "Wrangell")]
     Wrangell,
-    /// Wrangell-Petersburg, Alaska; deleted; First Judicial District.
+    /// Wrangell-Petersburg, Alaska (deleted), First Judicial District.
     #[strum(serialize = "Wrangell-Petersburg")]
     WrangellPetersburg,
-    /// Yakutat, Alaska; First Judicial District.
+    /// Yakutat, Alaska, First Judicial District.
     #[strum(serialize = "Yakutat")]
     Yakutat,
-    /// Yukon-Koyukuk, Alaska; Fourth Judicial District.
+    /// Yukon-Koyukuk, Alaska, Fourth Judicial District.
     #[strum(serialize = "Yukon-Koyukuk")]
     YukonKoyukuk,
 }
@@ -243,7 +243,7 @@ pub enum SecondarySubdivision<'a> {
 impl<'a> SecondarySubdivision<'a> {
     /// Finds interpretations supported by ADIF's formats and supplied membership.
     ///
-    /// County prefixes dispatch to a single parser; a failed nested parse has no
+    /// County prefixes dispatch to a single parser. A failed nested parse has no
     /// fallback. Unprefixed codes can yield multiple format-compatible candidates.
     /// Matching ignores ASCII case without trimming. Payloads borrow the input.
     pub fn candidates(code: &'a str) -> impl Iterator<Item = Self> {

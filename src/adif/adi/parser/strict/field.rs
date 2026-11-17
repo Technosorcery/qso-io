@@ -26,7 +26,7 @@ pub(super) struct DataSpecifier<'a> {
 
 /// A complete length-framed field with immutable bytes and cached text decoding.
 ///
-/// Name casing, raw value bytes and decoded spelling are preserved.
+/// The field keeps name casing, raw value bytes, and decoded spelling.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Field<'a> {
     pub(super) specifier: DataSpecifier<'a>,
@@ -39,7 +39,7 @@ pub struct Field<'a> {
 }
 
 impl<'a> Field<'a> {
-    /// Returns the field name with its original casing.
+    /// Returns the field name with its supplied casing.
     pub fn name(&self) -> &str {
         &self.specifier.name
     }
@@ -49,7 +49,7 @@ impl<'a> Field<'a> {
         self.specifier.length
     }
 
-    /// Returns the resolved ADIF type, or None for unresolved untyped contents.
+    /// Returns the resolved ADIF type, or None if the field has no resolved type.
     ///
     /// Standard definitions, USERDEF declarations, application-field history, or
     /// an inline indicator can establish this type, independently of emptiness.
@@ -59,25 +59,25 @@ impl<'a> Field<'a> {
 
     /// Returns the type named by the optional inline descriptor indicator.
     ///
-    /// This is None when the indicator was omitted, even if the type was resolved
-    /// from a definition or previous application-field occurrence.
+    /// If the descriptor has no indicator, this method returns None. A definition
+    /// or previous application-field occurrence can still establish the type.
     pub fn type_indicator(&self) -> Option<DataType> {
         self.specifier.type_indicator
     }
 
-    /// Borrows the original value bytes.
+    /// Borrows the supplied value bytes.
     pub fn raw_data(&self) -> &'a [u8] {
         self.raw_data
     }
 
-    /// Returns the original byte range from the descriptor's `<` through `>`.
+    /// Returns the descriptor's byte range from `<` through `>` in the input.
     ///
-    /// The end is exclusive; value bytes are not included.
+    /// The range excludes the end position and the value bytes.
     pub fn descriptor_span(&self) -> Range<usize> {
         self.descriptor_span.clone()
     }
 
-    /// Returns the original value's byte range with an exclusive end.
+    /// Returns the supplied value's byte range with an exclusive end.
     ///
     /// An empty value has an empty range at its actual input position, and spans
     /// always count bytes even when the declared length counts scalars.
@@ -85,7 +85,7 @@ impl<'a> Field<'a> {
         self.value_span.clone()
     }
 
-    /// Borrows the original decoded spelling retained during parsing.
+    /// Borrows the decoded text with its supplied spelling.
     pub fn text(&self) -> &str {
         match &self.value {
             Some(Value::Text(text)) => text,

@@ -1,7 +1,7 @@
 //! Papua New Guinea primary subdivisions, DXCC entity 163.
 use strum::{EnumIter, EnumString, IntoStaticStr};
 
-/// A Papua New Guinea primary subdivision, including import-only historical identities.
+/// A Papua New Guinea primary subdivision, with import-only historical identities.
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq, EnumIter, EnumString, IntoStaticStr)]
 #[strum(ascii_case_insensitive)]
 pub enum PrimarySubdivision {
@@ -47,7 +47,7 @@ pub enum PrimarySubdivision {
     /// Northern.
     #[strum(serialize = "NPP")]
     Northern,
-    /// North Solomons; import-only historical spelling.
+    /// North Solomons (import-only historical spelling).
     #[strum(serialize = "NSA")]
     NorthSolomons,
     /// Bougainville.
@@ -65,7 +65,7 @@ pub enum PrimarySubdivision {
     /// Western Highlands.
     #[strum(serialize = "WHM")]
     WesternHighlands,
-    /// West New Britain; import-only historical spelling WBR.
+    /// West New Britain (import-only historical spelling WBR).
     #[strum(serialize = "WBR")]
     WestNewBritainLegacy,
     /// West New Britain.

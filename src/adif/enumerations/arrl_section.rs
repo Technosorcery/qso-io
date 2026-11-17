@@ -1,4 +1,4 @@
-//! ARRL sections, including historical identities, from ADIF III.B.2.
+//! ARRL sections, with historical identities, from ADIF III.B.2.
 
 use strum::{EnumIter, EnumString, IntoStaticStr};
 
@@ -7,7 +7,7 @@ use chrono::NaiveDate;
 /// An ARRL section used in contest exchanges and award records.
 ///
 /// Historical identities remain distinct from their replacements. Some sections
-/// cover several DXCC entities, and entries may have effective or deletion dates.
+/// cover several DXCC entities, and entries can have effective or deletion dates.
 /// See [ADIF III.B.2](https://www.adif.org.uk/318/ADIF_318.htm#ARRL_Section_Enumeration).
 #[derive(Debug, Copy, Clone, PartialEq, Eq, EnumIter, EnumString, IntoStaticStr)]
 #[strum(ascii_case_insensitive)]
@@ -186,13 +186,13 @@ pub enum ArrlSection {
     /// Oregon.
     #[strum(serialize = "OR")]
     OR,
-    /// Pacific; covers multiple DXCC entities.
+    /// Pacific (multiple DXCC entities).
     #[strum(serialize = "PAC")]
     PAC,
     /// Prince Edward Island, effective 2020-04-01.
     #[strum(serialize = "PE")]
     PE,
-    /// Puerto Rico; includes Desecheo Island.
+    /// Puerto Rico, with Desecheo Island.
     #[strum(serialize = "PR")]
     PR,
     /// Quebec.
@@ -243,7 +243,7 @@ pub enum ArrlSection {
     /// Territories, replacing NT from 2023-01-01.
     #[strum(serialize = "TER")]
     TER,
-    /// US Virgin Islands; covers multiple DXCC entities.
+    /// US Virgin Islands (multiple DXCC entities).
     #[strum(serialize = "VI")]
     VI,
     /// Utah.

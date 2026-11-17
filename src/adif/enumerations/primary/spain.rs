@@ -1,6 +1,6 @@
 //! Spanish subdivisions, DXCC 281, ADIF 3.1.8 III.B.12.
 use strum::{EnumIter, EnumString, IntoStaticStr};
-/// Spanish provinces in ADIF's Spain entity, including import-only OU.
+/// Spanish provinces in ADIF's Spain entity, with import-only OU.
 #[derive(Debug, Copy, Clone, Eq, PartialEq, EnumIter, EnumString, IntoStaticStr)]
 #[strum(ascii_case_insensitive)]
 pub enum PrimarySubdivision {
@@ -25,7 +25,7 @@ pub enum PrimarySubdivision {
     /// Asturias.
     #[strum(serialize = "O")]
     Asturias,
-    /// Ourense; import-only legacy code OU.
+    /// Ourense (import-only legacy code OU).
     #[strum(serialize = "OU")]
     OurenseLegacy,
     /// Ourense.

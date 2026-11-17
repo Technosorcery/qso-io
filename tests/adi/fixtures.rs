@@ -116,7 +116,7 @@ fn upstream_transadif_ascii_fixture_preserves_crlf_preamble_and_values() {
     assert_eq!(named(&file.records[0], "TIME_ON").text(), "0100");
 }
 
-// Require successful completion and exactly one record without prescribing
+// Parsing must complete with exactly one record. The test does not select
 // which parser consumes the fixture's separators.
 #[test]
 fn upstream_latin1_fixture_uses_original_single_byte_accents() {

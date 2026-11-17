@@ -1,110 +1,110 @@
 use bigdecimal::BigDecimal;
 use strum::{EnumIter, EnumString, IntoStaticStr};
 
-/// An ADIF wavelength band, including the specification's frequency bounds.
+/// An ADIF wavelength band, with the specification's frequency bounds.
 ///
 /// The bounds describe ADIF classification, not permission to transmit. They
 /// need not match the allocations applicable to a particular station.
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq, EnumIter, EnumString, IntoStaticStr)]
 #[strum(ascii_case_insensitive)]
 pub enum Band {
-    /// 2190 metre band: 0.1357–0.1378 MHz.
+    /// 2190 meter band: 0.1357–0.1378 MHz.
     #[strum(serialize = "2190m")]
     Metres2190,
-    /// 630 metre band: 0.472–0.479 MHz.
+    /// 630 meter band: 0.472–0.479 MHz.
     #[strum(serialize = "630m")]
     Metres630,
-    /// 560 metre band: 0.501–0.504 MHz.
+    /// 560 meter band: 0.501–0.504 MHz.
     #[strum(serialize = "560m")]
     Metres560,
-    /// 160 metre band: 1.8–2 MHz.
+    /// 160 meter band: 1.8–2 MHz.
     #[strum(serialize = "160m")]
     Metres160,
-    /// 80 metre band: 3.5–4 MHz.
+    /// 80 meter band: 3.5–4 MHz.
     #[strum(serialize = "80m")]
     Metres80,
-    /// 60 metre band: 5.06–5.45 MHz.
+    /// 60 meter band: 5.06–5.45 MHz.
     #[strum(serialize = "60m")]
     Metres60,
-    /// 40 metre band: 7–7.3 MHz.
+    /// 40 meter band: 7–7.3 MHz.
     #[strum(serialize = "40m")]
     Metres40,
-    /// 30 metre band: 10.1–10.15 MHz.
+    /// 30 meter band: 10.1–10.15 MHz.
     #[strum(serialize = "30m")]
     Metres30,
-    /// 20 metre band: 14–14.35 MHz.
+    /// 20 meter band: 14–14.35 MHz.
     #[strum(serialize = "20m")]
     Metres20,
-    /// 17 metre band: 18.068–18.168 MHz.
+    /// 17 meter band: 18.068–18.168 MHz.
     #[strum(serialize = "17m")]
     Metres17,
-    /// 15 metre band: 21–21.45 MHz.
+    /// 15 meter band: 21–21.45 MHz.
     #[strum(serialize = "15m")]
     Metres15,
-    /// 12 metre band: 24.890–24.99 MHz.
+    /// 12 meter band: 24.890–24.99 MHz.
     #[strum(serialize = "12m")]
     Metres12,
-    /// 10 metre band: 28–29.7 MHz.
+    /// 10 meter band: 28–29.7 MHz.
     #[strum(serialize = "10m")]
     Metres10,
-    /// 8 metre band: 40–45 MHz.
+    /// 8 meter band: 40–45 MHz.
     #[strum(serialize = "8m")]
     Metres8,
-    /// 6 metre band: 50–54 MHz.
+    /// 6 meter band: 50–54 MHz.
     #[strum(serialize = "6m")]
     Metres6,
-    /// 5 metre band: 54.000001–69.9 MHz.
+    /// 5 meter band: 54.000001–69.9 MHz.
     #[strum(serialize = "5m")]
     Metres5,
-    /// 4 metre band: 70–71 MHz.
+    /// 4 meter band: 70–71 MHz.
     #[strum(serialize = "4m")]
     Metres4,
-    /// 2 metre band: 144–148 MHz.
+    /// 2 meter band: 144–148 MHz.
     #[strum(serialize = "2m")]
     Metres2,
-    /// 1.25 metre band: 222–225 MHz.
+    /// 1.25 meter band: 222–225 MHz.
     #[strum(serialize = "1.25m")]
     Metres1_25,
-    /// 70 centimetre band: 420–450 MHz.
+    /// 70 centimeter band: 420–450 MHz.
     #[strum(serialize = "70cm")]
     Centimetres70,
-    /// 33 centimetre band: 902–928 MHz.
+    /// 33 centimeter band: 902–928 MHz.
     #[strum(serialize = "33cm")]
     Centimetres33,
-    /// 23 centimetre band: 1240–1300 MHz.
+    /// 23 centimeter band: 1240–1300 MHz.
     #[strum(serialize = "23cm")]
     Centimetres23,
-    /// 13 centimetre band: 2300–2450 MHz.
+    /// 13 centimeter band: 2300–2450 MHz.
     #[strum(serialize = "13cm")]
     Centimetres13,
-    /// 9 centimetre band: 3300–3500 MHz.
+    /// 9 centimeter band: 3300–3500 MHz.
     #[strum(serialize = "9cm")]
     Centimetres9,
-    /// 6 centimetre band: 5650–5925 MHz.
+    /// 6 centimeter band: 5650–5925 MHz.
     #[strum(serialize = "6cm")]
     Centimetres6,
-    /// 3 centimetre band: 10000–10500 MHz.
+    /// 3 centimeter band: 10000–10500 MHz.
     #[strum(serialize = "3cm")]
     Centimetres3,
-    /// 1.25 centimetre band: 24000–24250 MHz.
+    /// 1.25 centimeter band: 24000–24250 MHz.
     #[strum(serialize = "1.25cm")]
     Centimetres1_25,
-    /// 6 millimetre band: 47000–47200 MHz.
+    /// 6 millimeter band: 47000–47200 MHz.
     #[strum(serialize = "6mm")]
     Millimetres6,
-    /// 4 millimetre band: 75500–81000 MHz.
+    /// 4 millimeter band: 75500–81000 MHz.
     #[strum(serialize = "4mm")]
     Millimetres4,
-    /// 2.5 millimetre band: 119980–123000 MHz.
+    /// 2.5 millimeter band: 119980–123000 MHz.
     #[strum(serialize = "2.5mm")]
     Millimetres2_5,
-    /// 2 millimetre band: 134000–149000 MHz.
+    /// 2 millimeter band: 134000–149000 MHz.
     #[strum(serialize = "2mm")]
     Millimetres2,
-    /// 1 millimetre band: 241000–250000 MHz.
+    /// 1 millimeter band: 241000–250000 MHz.
     #[strum(serialize = "1mm")]
     Millimetres1,
-    /// Submillimetre band: 300000–7500000 MHz.
+    /// Submillimeter band: 300000–7500000 MHz.
     #[strum(serialize = "submm")]
     Submillimetre,
 }

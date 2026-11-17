@@ -1,6 +1,6 @@
 use strum::{EnumIter, EnumString, IntoStaticStr};
 
-/// An ADIF operating mode, including legacy import-only mode values.
+/// An ADIF operating mode, with legacy import-only mode values.
 ///
 /// Modern records express a mode family here and its more specific form in
 /// [`super::Submode`]. [`Mode::is_import_only`] identifies historical values
@@ -20,22 +20,22 @@ pub enum Mode {
     /// CHIP digital mode family, with CHIP64 and CHIP128 submodes.
     #[strum(serialize = "CHIP")]
     Chip,
-    /// CLO operating mode; ADIF supplies no further description.
+    /// CLO operating mode. ADIF supplies no more description.
     #[strum(serialize = "CLO")]
     Clo,
     /// Contestia digital mode.
     #[strum(serialize = "CONTESTI")]
     Contesti,
-    /// Continuous-wave Morse operation, including coherent CW.
+    /// Continuous-wave Morse operation, with coherent CW.
     #[strum(serialize = "CW")]
     Cw,
-    /// Digital voice family, including C4FM, DMR, DSTAR, FreeDV and M17.
+    /// Digital voice family, with C4FM, DMR, DSTAR, FreeDV and M17.
     #[strum(serialize = "DIGITALVOICE")]
     DigitalVoice,
     /// Domino digital mode family.
     #[strum(serialize = "DOMINO")]
     Domino,
-    /// Adaptive digital mode family, including FreeData and VARA.
+    /// Adaptive digital mode family, with FreeData and VARA.
     #[strum(serialize = "DYNAMIC")]
     Dynamic,
     /// Facsimile transmission.
@@ -47,13 +47,13 @@ pub enum Mode {
     /// FSK441 digital mode.
     #[strum(serialize = "FSK441")]
     Fsk441,
-    /// Frequency shift keying, including SCAMP FSK submodes.
+    /// Frequency shift keying, with SCAMP FSK submodes.
     #[strum(serialize = "FSK")]
     Fsk,
-    /// Franke–Taylor design using eight-tone frequency shift keying.
+    /// Franke–Taylor design with eight-tone frequency shift keying.
     #[strum(serialize = "FT8")]
     Ft8,
-    /// Hellschreiber family, including its FSK, FM and PSK variants.
+    /// Hellschreiber family, with its FSK, FM and PSK variants.
     #[strum(serialize = "HELL")]
     Hell,
     /// ISCAT digital mode family.
@@ -65,7 +65,7 @@ pub enum Mode {
     /// JT6M digital mode.
     #[strum(serialize = "JT6M")]
     Jt6m,
-    /// JT9 digital mode family, including its fast variants.
+    /// JT9 digital mode family, with its fast variants.
     #[strum(serialize = "JT9")]
     Jt9,
     /// JT44 digital mode.
@@ -74,19 +74,19 @@ pub enum Mode {
     /// JT65 digital mode family.
     #[strum(serialize = "JT65")]
     Jt65,
-    /// Multiple-frequency-shift-keying family, including FT4, JS8 and Q65.
+    /// Multiple-frequency-shift-keying family, with FT4, JS8 and Q65.
     #[strum(serialize = "MFSK")]
     Mfsk,
     /// MSK144 digital mode.
     #[strum(serialize = "MSK144")]
     Msk144,
-    /// Single modulated tone, including SCAMP on/off keying.
+    /// Single modulated tone, with SCAMP on/off keying.
     #[strum(serialize = "MTONE")]
     Mtone,
     /// MT63 digital mode.
     #[strum(serialize = "MT63")]
     Mt63,
-    /// Orthogonal frequency-division multiplexing, including COFDM.
+    /// Orthogonal frequency-division multiplexing, with COFDM.
     #[strum(serialize = "OFDM")]
     Ofdm,
     /// Olivia digital mode family.
@@ -104,13 +104,13 @@ pub enum Mode {
     /// Packet radio.
     #[strum(serialize = "PKT")]
     Pkt,
-    /// Phase-shift-keying family, including binary and quadrature variants.
+    /// Phase-shift-keying family, with binary and quadrature variants.
     #[strum(serialize = "PSK")]
     Psk,
     /// PSK2K digital mode.
     #[strum(serialize = "PSK2K")]
     Psk2k,
-    /// Q15 digital mode; ADIF supplies no further description.
+    /// Q15 digital mode. ADIF supplies no more description.
     #[strum(serialize = "Q15")]
     Q15,
     /// QRA64 digital mode family.
@@ -119,10 +119,10 @@ pub enum Mode {
     /// ROS digital mode family for EME, HF and MF operation.
     #[strum(serialize = "ROS")]
     Ros,
-    /// Radioteletype, including the ASCI submode.
+    /// Radioteletype, with the ASCI submode.
     #[strum(serialize = "RTTY")]
     Rtty,
-    /// RTTYM digital mode; ADIF supplies no further description.
+    /// RTTYM digital mode. ADIF supplies no more description.
     #[strum(serialize = "RTTYM")]
     Rttym,
     /// Single-sideband voice, with lower and upper sideband submodes.
@@ -141,13 +141,13 @@ pub enum Mode {
     /// Throb digital mode family.
     #[strum(serialize = "THRB")]
     Thrb,
-    /// Teleprinting-over-radio family, including AMTOR FEC, GTOR and SITOR B.
+    /// Teleprinting-over-radio family, with AMTOR FEC, GTOR and SITOR B.
     #[strum(serialize = "TOR")]
     Tor,
     /// V4 digital mode.
     #[strum(serialize = "V4")]
     V4,
-    /// VOI operating mode; ADIF supplies no further description.
+    /// VOI operating mode. ADIF supplies no more description.
     #[strum(serialize = "VOI")]
     Voi,
     /// WINMOR digital mode.
@@ -156,131 +156,214 @@ pub enum Mode {
     /// Weak Signal Propagation Reporter mode.
     #[strum(serialize = "WSPR")]
     Wspr,
-    /// Legacy AMTOR forward-error-correction mode; import-only, now a TOR submode.
+    /// Legacy AMTOR forward-error-correction mode (import-only).
+    ///
+    /// ADIF defines this as a TOR submode.
     #[strum(serialize = "AMTORFEC")]
     AmtorFec,
-    /// Legacy ASCI radioteletype mode; import-only, now an RTTY submode.
+    /// Legacy ASCI radioteletype mode (import-only).
+    ///
+    /// ADIF defines this as an RTTY submode.
     #[strum(serialize = "ASCI")]
     Asci,
-    /// Legacy C4FM four-level FSK voice; import-only, now a digital voice submode.
+    /// Legacy C4FM four-level FSK voice (import-only).
+    ///
+    /// ADIF defines this as a digital voice submode.
     #[strum(serialize = "C4FM")]
     C4fm,
-    /// Legacy CHIP64 mode; import-only, now a CHIP submode.
+    /// Legacy CHIP64 mode (import-only).
+    ///
+    /// ADIF defines this as a CHIP submode.
     #[strum(serialize = "CHIP64")]
     Chip64,
-    /// Legacy CHIP128 mode; import-only, now a CHIP submode.
+    /// Legacy CHIP128 mode (import-only).
+    ///
+    /// ADIF defines this as a CHIP submode.
     #[strum(serialize = "CHIP128")]
     Chip128,
-    /// Legacy Domino F mode; import-only, now a Domino submode.
+    /// Legacy Domino F mode (import-only).
+    ///
+    /// ADIF defines this as a Domino submode.
     #[strum(serialize = "DOMINOF")]
     DominoF,
-    /// Digital Smart Technologies for Amateur Radio; import-only as a mode,
-    /// now a digital voice submode.
+    /// Digital Smart Technologies for Amateur Radio (import-only as a mode).
+    ///
+    /// ADIF defines this as a digital voice submode.
     #[strum(serialize = "DSTAR")]
     Dstar,
-    /// Legacy FM Hellschreiber; import-only, now a Hell submode.
+    /// Legacy FM Hellschreiber (import-only).
+    ///
+    /// ADIF defines this as a Hell submode.
     #[strum(serialize = "FMHELL")]
     FmHell,
-    /// Legacy FSK31 mode; import-only, now a PSK submode.
+    /// Legacy FSK31 mode (import-only).
+    ///
+    /// ADIF defines this as a PSK submode.
     #[strum(serialize = "FSK31")]
     Fsk31,
-    /// Legacy GTOR mode; import-only, now a TOR submode.
+    /// Legacy GTOR mode (import-only).
+    ///
+    /// ADIF defines this as a TOR submode.
     #[strum(serialize = "GTOR")]
     Gtor,
-    /// Legacy Hell80 mode; import-only, now a Hell submode.
+    /// Legacy Hell80 mode (import-only).
+    ///
+    /// ADIF defines this as a Hell submode.
     #[strum(serialize = "HELL80")]
     Hell80,
-    /// Legacy HFSK Hellschreiber; import-only, now a Hell submode.
+    /// Legacy HFSK Hellschreiber (import-only).
+    ///
+    /// ADIF defines this as a Hell submode.
     #[strum(serialize = "HFSK")]
     Hfsk,
-    /// Legacy JT4 A variant; import-only, now a JT4 submode.
+    /// Legacy JT4 A variant (import-only).
+    ///
+    /// ADIF defines this as a JT4 submode.
     #[strum(serialize = "JT4A")]
     Jt4a,
-    /// Legacy JT4 B variant; import-only, now a JT4 submode.
+    /// Legacy JT4 B variant (import-only).
+    ///
+    /// ADIF defines this as a JT4 submode.
     #[strum(serialize = "JT4B")]
     Jt4b,
-    /// Legacy JT4 C variant; import-only, now a JT4 submode.
+    /// Legacy JT4 C variant (import-only).
+    ///
+    /// ADIF defines this as a JT4 submode.
     #[strum(serialize = "JT4C")]
     Jt4c,
-    /// Legacy JT4 D variant; import-only, now a JT4 submode.
+    /// Legacy JT4 D variant (import-only).
+    ///
+    /// ADIF defines this as a JT4 submode.
     #[strum(serialize = "JT4D")]
     Jt4d,
-    /// Legacy JT4 E variant; import-only, now a JT4 submode.
+    /// Legacy JT4 E variant (import-only).
+    ///
+    /// ADIF defines this as a JT4 submode.
     #[strum(serialize = "JT4E")]
     Jt4e,
-    /// Legacy JT4 F variant; import-only, now a JT4 submode.
+    /// Legacy JT4 F variant (import-only).
+    ///
+    /// ADIF defines this as a JT4 submode.
     #[strum(serialize = "JT4F")]
     Jt4f,
-    /// Legacy JT4 G variant; import-only, now a JT4 submode.
+    /// Legacy JT4 G variant (import-only).
+    ///
+    /// ADIF defines this as a JT4 submode.
     #[strum(serialize = "JT4G")]
     Jt4g,
-    /// Legacy JT65 A variant; import-only, now a JT65 submode.
+    /// Legacy JT65 A variant (import-only).
+    ///
+    /// ADIF defines this as a JT65 submode.
     #[strum(serialize = "JT65A")]
     Jt65a,
-    /// Legacy JT65 B variant; import-only, now a JT65 submode.
+    /// Legacy JT65 B variant (import-only).
+    ///
+    /// ADIF defines this as a JT65 submode.
     #[strum(serialize = "JT65B")]
     Jt65b,
-    /// Legacy JT65 C variant; import-only, now a JT65 submode.
+    /// Legacy JT65 C variant (import-only).
+    ///
+    /// ADIF defines this as a JT65 submode.
     #[strum(serialize = "JT65C")]
     Jt65c,
-    /// Legacy MFSK8 mode; import-only, now an MFSK submode.
+    /// Legacy MFSK8 mode (import-only).
+    ///
+    /// ADIF defines this as an MFSK submode.
     #[strum(serialize = "MFSK8")]
     Mfsk8,
-    /// Legacy MFSK16 mode; import-only, now an MFSK submode.
+    /// Legacy MFSK16 mode (import-only).
+    ///
+    /// ADIF defines this as an MFSK submode.
     #[strum(serialize = "MFSK16")]
     Mfsk16,
-    /// Legacy PACTOR II mode; import-only, now a PAC submode.
+    /// Legacy PACTOR II mode (import-only).
+    ///
+    /// ADIF defines this as a PAC submode.
     #[strum(serialize = "PAC2")]
     Pac2,
-    /// Legacy PACTOR III mode; import-only, now a PAC submode.
+    /// Legacy PACTOR III mode (import-only).
+    ///
+    /// ADIF defines this as a PAC submode.
     #[strum(serialize = "PAC3")]
     Pac3,
-    /// Legacy PAX2 mode; import-only, now a PAX submode.
+    /// Legacy PAX2 mode (import-only).
+    ///
+    /// ADIF defines this as a PAX submode.
     #[strum(serialize = "PAX2")]
     Pax2,
-    /// Legacy coherent CW mode; import-only, now a CW submode.
+    /// Legacy coherent CW mode (import-only).
+    ///
+    /// ADIF defines this as a CW submode.
     #[strum(serialize = "PCW")]
     Pcw,
-    /// Legacy PSK10 mode; import-only, now a PSK submode.
+    /// Legacy PSK10 mode (import-only).
+    ///
+    /// ADIF defines this as a PSK submode.
     #[strum(serialize = "PSK10")]
     Psk10,
-    /// Legacy PSK31 mode; import-only, now a PSK submode.
+    /// Legacy PSK31 mode (import-only).
+    ///
+    /// ADIF defines this as a PSK submode.
     #[strum(serialize = "PSK31")]
     Psk31,
-    /// Legacy PSK63 mode; import-only, now a PSK submode.
+    /// Legacy PSK63 mode (import-only).
+    ///
+    /// ADIF defines this as a PSK submode.
     #[strum(serialize = "PSK63")]
     Psk63,
-    /// Legacy PSK63F mode; import-only, now a PSK submode.
+    /// Legacy PSK63F mode (import-only).
+    ///
+    /// ADIF defines this as a PSK submode.
     #[strum(serialize = "PSK63F")]
     Psk63f,
-    /// Legacy PSK125 mode; import-only, now a PSK submode.
+    /// Legacy PSK125 mode (import-only).
+    ///
+    /// ADIF defines this as a PSK submode.
     #[strum(serialize = "PSK125")]
     Psk125,
-    /// Legacy PSKAM10 mode; import-only, now a PSK submode.
+    /// Legacy PSKAM10 mode (import-only).
+    ///
+    /// ADIF defines this as a PSK submode.
     #[strum(serialize = "PSKAM10")]
     PskAm10,
-    /// Legacy PSKAM31 mode; import-only, now a PSK submode.
+    /// Legacy PSKAM31 mode (import-only).
+    ///
+    /// ADIF defines this as a PSK submode.
     #[strum(serialize = "PSKAM31")]
     PskAm31,
-    /// Legacy PSKAM50 mode; import-only, now a PSK submode.
+    /// Legacy PSKAM50 mode (import-only).
+    ///
+    /// ADIF defines this as a PSK submode.
     #[strum(serialize = "PSKAM50")]
     PskAm50,
-    /// Legacy PSKFEC31 mode; import-only, now a PSK submode.
+    /// Legacy PSKFEC31 mode (import-only).
+    ///
+    /// ADIF defines this as a PSK submode.
     #[strum(serialize = "PSKFEC31")]
     PskFec31,
-    /// Legacy PSK Hellschreiber; import-only, now a Hell submode.
+    /// Legacy PSK Hellschreiber (import-only).
+    ///
+    /// ADIF defines this as a Hell submode.
     #[strum(serialize = "PSKHELL")]
     PskHell,
-    /// Legacy QPSK31 mode; import-only, now a PSK submode.
+    /// Legacy QPSK31 mode (import-only).
+    ///
+    /// ADIF defines this as a PSK submode.
     #[strum(serialize = "QPSK31")]
     Qpsk31,
-    /// Legacy QPSK63 mode; import-only, now a PSK submode.
+    /// Legacy QPSK63 mode (import-only).
+    ///
+    /// ADIF defines this as a PSK submode.
     #[strum(serialize = "QPSK63")]
     Qpsk63,
-    /// Legacy QPSK125 mode; import-only, now a PSK submode.
+    /// Legacy QPSK125 mode (import-only).
+    ///
+    /// ADIF defines this as a PSK submode.
     #[strum(serialize = "QPSK125")]
     Qpsk125,
-    /// Legacy THRBX mode; import-only, now a Throb submode.
+    /// Legacy THRBX mode (import-only).
+    ///
+    /// ADIF defines this as a Throb submode.
     #[strum(serialize = "THRBX")]
     Thrbx,
 }

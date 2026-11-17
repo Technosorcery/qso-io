@@ -1,4 +1,4 @@
-//! ADIF 3.1.8 reference identities and metadata, including historical entries.
+//! ADIF 3.1.8 reference identities and metadata, with historical entries.
 
 mod ant_path;
 mod arrl_section;

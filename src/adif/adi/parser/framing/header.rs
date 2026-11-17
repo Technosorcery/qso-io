@@ -22,7 +22,9 @@ pub struct PermissiveHeader<'a> {
 }
 
 impl<'a> PermissiveHeader<'a> {
-    /// Finds a field by ASCII case-insensitive name, reporting ambiguous matches.
+    /// Finds a field by ASCII case-insensitive name.
+    ///
+    /// Multiple matches produce an ambiguity error.
     pub fn field(&self, name: &str) -> Result<Option<&PermissiveField<'a>>, LookupError> {
         single_match(
             name,
@@ -31,19 +33,21 @@ impl<'a> PermissiveHeader<'a> {
         )
     }
 
-    /// Iterates over all matching fields in source order without choosing precedence.
+    /// Iterates over all matching fields in source order without a precedence rule.
     pub fn fields_named<'s>(&'s self, name: &str) -> impl Iterator<Item = &'s PermissiveField<'a>> {
         self.fields
             .iter()
             .filter(move |field| field.name().eq_ignore_ascii_case(name))
     }
 
-    /// Borrows every supplied header field in source order, including USERDEFn fields.
+    /// Borrows every supplied header field in source order.
+    ///
+    /// USERDEFn fields remain in this slice.
     pub fn fields(&self) -> &[PermissiveField<'a>] {
         &self.fields
     }
 
-    /// Borrows original preamble bytes, regardless of decoding success.
+    /// Borrows supplied preamble bytes, regardless of decoding success.
     pub fn raw_text(&self) -> &'a [u8] {
         self.text_bytes
     }
@@ -58,7 +62,9 @@ impl<'a> PermissiveHeader<'a> {
         self.span.clone()
     }
 
-    /// Borrows cached preamble text or its error, relative to [`Self::raw_text`].
+    /// Borrows the cached preamble text or its decoding error.
+    ///
+    /// Error offsets count bytes from the start of [`Self::raw_text`].
     pub fn text(&self) -> Result<&str, &DecodeError> {
         self.text.as_deref()
     }

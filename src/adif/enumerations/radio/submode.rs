@@ -98,7 +98,7 @@ pub enum Submode {
     /// FM Hellschreiber.
     #[strum(serialize = "FMHELL")]
     FmHell,
-    /// Data communications using Codec2 HF modems, in the dynamic mode family.
+    /// Data communications with Codec2 HF modems, in the dynamic mode family.
     #[strum(serialize = "FREEDATA")]
     FreeData,
     /// Open-source digital voice mode for HF radio.
@@ -251,7 +251,7 @@ pub enum Submode {
     /// Amplitude-modulated voice, lower sideband, suppressed carrier.
     #[strum(serialize = "LSB")]
     Lsb,
-    /// Digital radio protocol using the Codec 2 voice encoder.
+    /// Digital radio protocol with the Codec 2 voice encoder.
     #[strum(serialize = "M17")]
     M17,
     /// MFSK4 form of multiple-frequency-shift keying.
@@ -464,10 +464,10 @@ pub enum Submode {
     /// E variant of QRA64.
     #[strum(serialize = "QRA64E")]
     Qra64e,
-    /// Images transmitted using Ribbit, in the OFDM family.
+    /// Image transmission with Ribbit, in the OFDM family.
     #[strum(serialize = "RIBBIT_PIX")]
     RibbitPix,
-    /// Short text messages transmitted using Ribbit, in the OFDM family.
+    /// Short text message transmission with Ribbit, in the OFDM family.
     #[strum(serialize = "RIBBIT_SMS")]
     RibbitSms,
     /// ROS for Earth–Moon–Earth operation.
@@ -575,7 +575,7 @@ pub enum Submode {
 }
 
 impl Submode {
-    /// The canonical ADIF spelling, including significant spaces and punctuation.
+    /// The canonical ADIF spelling, with significant spaces and punctuation.
     pub fn as_str(self) -> &'static str {
         self.into()
     }

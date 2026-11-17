@@ -1,6 +1,6 @@
 //! Italian subdivisions, DXCC 248, ADIF 3.1.8 III.B.12.
 use strum::{EnumIter, EnumString, IntoStaticStr};
-/// Italian provinces, including import-only codes; Sardinia is a separate entity.
+/// Italian provinces, with import-only codes. Sardinia is a separate entity.
 #[derive(Debug, Copy, Clone, Eq, PartialEq, EnumIter, EnumString, IntoStaticStr)]
 #[strum(ascii_case_insensitive)]
 pub enum PrimarySubdivision {
@@ -124,7 +124,7 @@ pub enum PrimarySubdivision {
     /// Ferrara.
     #[strum(serialize = "FE")]
     Ferrara,
-    /// Forlì; import-only legacy code FO.
+    /// Forlì (import-only legacy code FO).
     #[strum(serialize = "FO")]
     ForliLegacy,
     /// Forlì-Cesena.
@@ -202,7 +202,7 @@ pub enum PrimarySubdivision {
     /// Macerata.
     #[strum(serialize = "MC")]
     Macerata,
-    /// Pesaro e Urbino; import-only legacy code PS.
+    /// Pesaro e Urbino (import-only legacy code PS).
     #[strum(serialize = "PS")]
     PesaroEUrbinoLegacy,
     /// Pesaro e Urbino.

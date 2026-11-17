@@ -1,7 +1,7 @@
 //! Paraguayan primary subdivisions, DXCC entity 132.
 use strum::{EnumIter, EnumString, IntoStaticStr};
 
-/// A Paraguayan primary subdivision, including import-only zero-padded identities.
+/// A Paraguayan primary subdivision, with import-only zero-padded identities.
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq, EnumIter, EnumString, IntoStaticStr)]
 #[strum(ascii_case_insensitive)]
 pub enum PrimarySubdivision {
@@ -17,7 +17,7 @@ pub enum PrimarySubdivision {
     /// Amambay.
     #[strum(serialize = "13")]
     Amambay,
-    /// Concepción; import-only zero-padded identity.
+    /// Concepción (import-only zero-padded identity).
     #[strum(serialize = "01")]
     ConcepcionLegacy,
     /// Concepción.
@@ -26,7 +26,7 @@ pub enum PrimarySubdivision {
     /// Canindeyú.
     #[strum(serialize = "14")]
     Canindeyu,
-    /// San Pedro; import-only zero-padded identity.
+    /// San Pedro (import-only zero-padded identity).
     #[strum(serialize = "02")]
     SanPedroLegacy,
     /// San Pedro.
@@ -38,37 +38,37 @@ pub enum PrimarySubdivision {
     /// Central.
     #[strum(serialize = "11")]
     Central,
-    /// Cordillera; import-only zero-padded identity.
+    /// Cordillera (import-only zero-padded identity).
     #[strum(serialize = "03")]
     CordilleraLegacy,
     /// Cordillera.
     #[strum(serialize = "3")]
     Cordillera,
-    /// Paraguarí; import-only zero-padded identity.
+    /// Paraguarí (import-only zero-padded identity).
     #[strum(serialize = "09")]
     ParaguariLegacy,
     /// Paraguarí.
     #[strum(serialize = "9")]
     Paraguari,
-    /// Caazapl, as spelled by ADIF; import-only zero-padded identity.
+    /// Caazapl, as spelled by ADIF (import-only zero-padded identity).
     #[strum(serialize = "06")]
     CaazaplLegacy,
     /// Caazapá.
     #[strum(serialize = "6")]
     Caazapa,
-    /// Caeguazú; import-only zero-padded identity.
+    /// Caeguazú (import-only zero-padded identity).
     #[strum(serialize = "05")]
     CaeguazuLegacy,
     /// Caeguazú.
     #[strum(serialize = "5")]
     Caeguazu,
-    /// Guairá; import-only zero-padded identity.
+    /// Guairá (import-only zero-padded identity).
     #[strum(serialize = "04")]
     GuairaLegacy,
     /// Guairá.
     #[strum(serialize = "4")]
     Guaira,
-    /// Miaiones, as spelled by ADIF; import-only zero-padded identity.
+    /// Miaiones, as spelled by ADIF (import-only zero-padded identity).
     #[strum(serialize = "08")]
     MiaionesLegacy,
     /// Misiones.
@@ -80,7 +80,7 @@ pub enum PrimarySubdivision {
     /// Alto Paraná.
     #[strum(serialize = "10")]
     AltoParana,
-    /// Itapua; import-only zero-padded identity.
+    /// Itapua (import-only zero-padded identity).
     #[strum(serialize = "07")]
     ItapuaLegacy,
     /// Itapúa.
