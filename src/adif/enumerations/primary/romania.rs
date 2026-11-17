@@ -1,6 +1,6 @@
 //! Romanian subdivisions, DXCC 275, ADIF 3.1.8 III.B.12.
 use strum::{EnumIter, EnumString, IntoStaticStr};
-/// Romanian administrative subdivisions, including the import-only Bucharest code.
+/// Romanian administrative subdivisions, with the import-only Bucharest code.
 #[derive(Debug, Copy, Clone, Eq, PartialEq, EnumIter, EnumString, IntoStaticStr)]
 #[strum(ascii_case_insensitive)]
 pub enum PrimarySubdivision {
@@ -16,7 +16,7 @@ pub enum PrimarySubdivision {
     /// Timiș.
     #[strum(serialize = "TM")]
     Timis,
-    /// Bucureşti (Bucure'ti); import-only legacy code BU.
+    /// Bucureşti (Bucure'ti) (import-only legacy code BU).
     #[strum(serialize = "BU")]
     BucurestiLegacy,
     /// București.

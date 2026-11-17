@@ -794,7 +794,7 @@ impl ContestId {
         self.into()
     }
 
-    /// Reports whether ADIF retains this identifier only for importing old logs.
+    /// Reports whether ADIF permits this identifier only on import of old logs.
     pub fn is_import_only(self) -> bool {
         matches!(
             self,

@@ -37,35 +37,40 @@ type Stream<'is> = Stateful<LocatingSlice<&'is [u8]>, State>;
 
 /// Reads complete ADI sections from a borrowed byte slice.
 ///
-/// Applies the supplied [`ParseOpts`] throughout the input. Uses its encoding
-/// for text decoding and the character repertoire of declared text types; see
-/// the [declared text table](crate::adif::adi::parser#strict-declared-text-and-encodings).
-/// Uses its `field_length` to interpret descriptor lengths.
+/// The parser applies the supplied [`ParseOpts`] throughout the input. Its
+/// encoding selects text decoding and the character repertoire of declared text
+/// types. See the [declared text table](crate::adif::adi::parser#strict-declared-text-and-encodings).
+/// Its `field_length` selects the unit for descriptor lengths.
 ///
-/// Earlier sections remain usable if a later section fails. A structural error
-/// is yielded once, followed by permanent exhaustion. Decoding errors are
-/// terminal, including in field values and header preambles. Resolved standard,
-/// USERDEF and application-field types are validated before a section is yielded.
-/// Document rules belong to this parser independently of returned headers.
+/// Earlier sections remain usable if a later section fails. The parser returns
+/// a structural error once. It then returns no more sections. Decoding errors
+/// are terminal, also in field values and header preambles.
+///
+/// Before it returns a section, the parser validates resolved standard, USERDEF,
+/// and application-field types. The parser keeps document rules independently
+/// of the returned headers.
 ///
 /// Standard enumeration membership uses ASCII case-insensitive comparison
-/// without trimming or Unicode normalization. Historical enumeration members
-/// are accepted independently of QSO-date applicability. Primary subdivision
-/// membership spans the supplied country groups independently of record DXCC,
-/// without identifying or inferring a country. Recommended enumerations for
-/// String fields such as CONTEST_ID remain advisory during parsing. CREDIT
-/// fields are tried as CreditList first, then
-/// as the legacy AwardList if the value fails CreditList grammar or membership.
+/// without trimming or Unicode normalization. The parser accepts historical
+/// enumeration members independently of QSO-date applicability. Primary
+/// subdivision membership uses the supplied country groups independently of
+/// record DXCC. It does not identify or infer a country.
 ///
-/// Decoding rejects invalid input without replacement. ASCII failures identify
-/// the first non-ASCII byte; UTF-8 failures identify the invalid or incomplete
-/// sequence. Byte-length values are framed before decoding, while UTF-8 scalar
-/// lengths require valid scalar traversal to locate the value boundary.
+/// Recommended enumerations for String fields such as CONTEST_ID remain
+/// advisory. The parser first tries CREDIT fields as CreditList. If CreditList
+/// grammar or membership checks fail, it tries the legacy AwardList.
 ///
-/// A nonempty input whose first byte is not `<` starts with a header preamble
-/// and requires an EOH terminator. Input starting with `<` is parsed as records
-/// without a header. Text between fields or sections is ignored up to the next
-/// `<`; declared field-value lengths take precedence over embedded delimiters.
+/// Decoding rejects incorrect input without replacement characters. ASCII
+/// failures identify the first non-ASCII byte. UTF-8 failures identify the
+/// incorrect or incomplete sequence. The parser frames byte-length values
+/// before decoding. For UTF-8 scalar lengths, it traverses complete Unicode
+/// scalar values to find the value boundary.
+///
+/// A nonempty input whose first byte is not `<` starts with a header preamble.
+/// It must have an EOH terminator. The parser reads input that starts with `<`
+/// as records without a header. It ignores text between fields or sections up
+/// to the next `<`. Declared field-value lengths take precedence over embedded
+/// delimiters.
 ///
 /// ```
 /// use qso_io::adif::adi::parser::options::{ParseOpts, ParseEncoding, LengthUnit};
@@ -97,9 +102,9 @@ pub struct StrictParser<'a> {
 }
 
 impl<'a> StrictParser<'a> {
-    /// Constructs a parser using the supplied input and options.
+    /// Constructs a parser with the supplied input and options.
     ///
-    /// Parsing begins when the iterator advances.
+    /// The parser starts when the iterator advances.
     pub fn new(input: &'a [u8], options: ParseOpts) -> Self {
         Self {
             sections: framing::Sections::new(

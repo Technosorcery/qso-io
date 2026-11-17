@@ -94,7 +94,7 @@ pub enum Award {
 }
 
 impl Award {
-    /// Returns the ADIF Award identifier, retaining its specified spelling.
+    /// Returns the ADIF Award identifier with its specified spelling.
     pub fn as_str(self) -> &'static str {
         self.into()
     }

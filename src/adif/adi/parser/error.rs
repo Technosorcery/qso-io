@@ -17,7 +17,7 @@ pub enum SyntaxErrorKind {
     MalformedDescriptor,
     /// The required unsigned ASCII decimal length is missing or malformed.
     InvalidLength,
-    /// The decimal length cannot be represented by the parser's `usize`.
+    /// The decimal length exceeds the parser's `usize` range.
     LengthOverflow,
     /// A supplied indicator is not one of the recognized ADIF type indicators.
     UnknownTypeIndicator,
@@ -34,42 +34,42 @@ pub enum SyntaxErrorKind {
 /// The kind of an ADI parsing error.
 #[derive(Debug, Clone)]
 pub enum StructuralErrorKind {
-    /// Two USERDEF declarations name the same record field ignoring ASCII case.
+    /// Two USERDEF declarations name the same record field under ASCII case-insensitive comparison.
     DuplicateUserDefinition {
-        /// Original repeated target name.
+        /// Supplied repeated target name.
         field_name: String,
-        /// First target name's original byte range.
+        /// First target name's byte range in the input.
         first_span: Range<usize>,
         /// Second target name's range and primary failure location.
         second_span: Range<usize>,
     },
     /// A nonempty value violates a document USERDEF constraint.
     UserDefinitionConstraintViolation {
-        /// Original record-field name.
+        /// Supplied record-field name.
         field_name: String,
-        /// Descriptor establishing the user field.
+        /// Descriptor that establishes the user field.
         declaration_span: Range<usize>,
-        /// Original constraint envelope, including braces.
+        /// Supplied constraint envelope, with braces.
         constraint_span: Range<usize>,
-        /// Constraint-specific reason, retaining exact bounds when relevant.
+        /// Constraint-specific reason with exact bounds where applicable.
         cause: crate::adif::adi::parser::strict::declarations::UserDefinitionValueError,
     },
     /// An inline indicator conflicts with the field's defined type.
     TypeConflict {
-        /// Original field name.
+        /// Supplied field name.
         field_name: String,
-        /// Types permitted by the definition, including types with no indicator.
+        /// Types permitted by the definition, with or without an indicator.
         expected: Vec<DataType>,
         /// Type named by the supplied inline indicator.
         supplied: DataType,
-        /// USERDEF declaration or first application descriptor establishing type.
+        /// USERDEF declaration or first application descriptor that establishes the type.
         definition_span: Option<Range<usize>>,
     },
     /// No permitted standard type accepts the supplied value.
     NoMatchingType {
-        /// Original field name.
+        /// Supplied field name.
         field_name: String,
-        /// Failures in preference order; the first supplies the primary span.
+        /// Failures in preference order. The first supplies the primary span.
         failures: Vec<TypeAlternativeFailure>,
     },
     /// Malformed syntax or a required section terminator missing at EOF.
@@ -85,21 +85,21 @@ pub enum StructuralErrorKind {
         declared: usize,
         /// Complete units present before EOF, measured in `unit`.
         available: usize,
-        /// Selected length interpretation; both counts use this unit.
+        /// Selected length interpretation. Both counts use this unit.
         unit: LengthUnit,
     },
-    /// A header or record repeats a field name, ignoring ASCII case.
+    /// A header or record has duplicate field names under ASCII case-insensitive comparison.
     DuplicateField {
         /// Field name as supplied in the affected descriptor.
         field_name: String,
-        /// First descriptor's original byte range, with exclusive end.
+        /// First descriptor's byte range in the input, with exclusive end.
         first_span: Range<usize>,
-        /// Repeated descriptor's original byte range and primary error location.
+        /// Repeated descriptor's byte range in the input and primary error location.
         second_span: Range<usize>,
     },
     /// Nonempty contents fail their resolved ADIF type grammar or membership.
     InvalidValue {
-        /// Original field name.
+        /// Supplied field name.
         field_name: String,
         /// Declared type whose grammar failed.
         cause: ValueError,
@@ -108,7 +108,7 @@ pub enum StructuralErrorKind {
     },
     /// An invalid USERDEF declaration.
     InvalidUserDefinition {
-        /// Original descriptor name.
+        /// Supplied descriptor name.
         field_name: String,
         /// Declaration-specific reason.
         cause: UserDefinitionError,
@@ -140,7 +140,7 @@ impl TypeAlternativeFailure {
         self.data_type
     }
 
-    /// Returns the failure's original input byte range.
+    /// Returns the failure's supplied input byte range.
     pub fn span(&self) -> Range<usize> {
         self.span.clone()
     }
@@ -152,16 +152,16 @@ impl TypeAlternativeFailure {
 
     /// Returns the expected standard enumeration, when membership failed.
     ///
-    /// The static label can be retained independently of this failure.
+    /// Callers can keep the static label independently of this failure.
     pub fn enumeration(&self) -> Option<&'static str> {
         self.enumeration
     }
 }
 
-/// A structural error located in the original input byte slice.
+/// A structural error located in the supplied input byte slice.
 ///
 /// Spans have exclusive ends. Truncated values and missing terminators have an
-/// empty span at input length; invalid bounded values can point inside the input.
+/// empty span at input length. Incorrect bounded values can point inside the input.
 #[derive(Debug)]
 pub struct StructuralError {
     span: Range<usize>,
@@ -170,10 +170,10 @@ pub struct StructuralError {
 }
 
 impl StructuralError {
-    /// Returns the primary error range in original input bytes.
+    /// Returns the primary error range in supplied input bytes.
     ///
     /// The end is exclusive. Truncation and missing-terminator errors point to
-    /// an empty range at EOF; duplicate errors identify the second descriptor.
+    /// an empty range at EOF. Duplicate errors identify the second descriptor.
     pub fn span(&self) -> Range<usize> {
         self.span.clone()
     }

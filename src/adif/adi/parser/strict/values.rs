@@ -277,8 +277,8 @@ pub(super) fn parse<'a>(
                     minutes,
                 })
             }
-            // ADX-only types are rejected before framing. Constituent character
-            // categories have no standalone ADI field conversion.
+            // The parser rejects ADX-only types before framing. Constituent
+            // character categories have no standalone ADI field conversion.
             Some(kind) => {
                 return Err(AdiError::TypeUnavailableInAdi {
                     data_type: kind,

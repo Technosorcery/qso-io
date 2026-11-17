@@ -17,10 +17,10 @@ pub enum ParseEncoding {
     /// Seven-bit ASCII, with byte values 0x00–0x7F.
     #[default]
     Ascii,
-    /// ISO-8859-1, with bytes corresponding directly to U+0000–U+00FF,
-    /// including C1 controls.
+    /// ISO-8859-1, with a direct byte mapping to U+0000–U+00FF.
     ///
-    /// This is ISO-8859-1/Latin-1 mapping, not Windows-1252.
+    /// The range includes C1 controls. This is ISO-8859-1/Latin-1 mapping, not
+    /// Windows-1252.
     Latin1,
     /// UTF-8 encoding of Unicode scalar values.
     Utf8,
@@ -29,7 +29,7 @@ pub enum ParseEncoding {
 /// Unit of the value length declared in an ADI field descriptor.
 #[derive(Debug, Default, Copy, Clone, PartialEq, Eq)]
 pub enum LengthUnit {
-    /// Original input bytes.
+    /// Supplied input bytes.
     #[default]
     Bytes,
     /// Unicode scalar values, rather than grapheme clusters or UTF-16 code units.

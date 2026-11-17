@@ -27,8 +27,8 @@ pub(in crate::adif::adi) struct Specifier<'a> {
 
 /// A length-framed ADI field with an unchecked indicator and cached decoding.
 ///
-/// Names and indicators preserve their UTF-8 spelling. Contents retain their
-/// original bytes even when text decoding fails.
+/// Names and indicators keep their UTF-8 spelling. Contents keep their input
+/// bytes even when text decoding fails.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PermissiveField<'a> {
     pub(in crate::adif::adi::parser) specifier: Specifier<'a>,
@@ -39,7 +39,7 @@ pub struct PermissiveField<'a> {
 }
 
 impl<'a> PermissiveField<'a> {
-    /// Returns the supplied field name, including an empty name.
+    /// Returns the supplied field name, which can be empty.
     pub fn name(&self) -> &str {
         self.specifier.name
     }
@@ -49,27 +49,31 @@ impl<'a> PermissiveField<'a> {
         self.specifier.length
     }
 
-    /// Returns the unchecked indicator spelling; an explicit empty indicator is `Some("")`.
+    /// Returns the unchecked indicator spelling.
+    ///
+    /// An explicit empty indicator gives `Some("")`.
     pub fn type_indicator(&self) -> Option<&str> {
         self.specifier.type_indicator
     }
 
-    /// Borrows the original value bytes.
+    /// Borrows the supplied value bytes.
     pub fn raw_data(&self) -> &'a [u8] {
         self.raw_data
     }
 
-    /// Returns the descriptor's exclusive-end byte range in the original input.
+    /// Returns the descriptor's exclusive-end byte range in the supplied input.
     pub fn descriptor_span(&self) -> Range<usize> {
         self.descriptor_span.clone()
     }
 
-    /// Returns the value's exclusive-end byte range in the original input.
+    /// Returns the value's exclusive-end byte range in the supplied input.
     pub fn value_span(&self) -> Range<usize> {
         self.value_span.clone()
     }
 
-    /// Borrows cached decoded text or its decoding error, relative to the value bytes.
+    /// Borrows the cached decoded text or its decoding error.
+    ///
+    /// Error offsets count bytes from the start of the field value.
     pub fn text(&self) -> Result<&str, &DecodeError> {
         self.text.as_deref()
     }

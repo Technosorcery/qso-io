@@ -8,13 +8,13 @@ use thiserror::Error;
 
 /// An ADIF field value.
 ///
-/// This enum is exhaustive. Its text representation is shared by untyped
-/// contents and the declared text types.
+/// This enum is exhaustive. Untyped contents and declared text types use the
+/// same text representation.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Value<'a> {
-    /// Original decoded text, retaining its spelling.
+    /// Decoded text with its supplied spelling.
     Text(Cow<'a, str>),
-    /// Top-level list members in source order, retaining compound member spelling.
+    /// Top-level list members with their source order and compound member spelling.
     List(Vec<Cow<'a, str>>),
     /// The Boolean value represented by ADIF Y/y or N/n.
     Boolean(bool),
@@ -24,7 +24,7 @@ pub enum Value<'a> {
     Number(BigDecimal),
     /// A valid ADIF calendar date expressing a UTC date component.
     Date(NaiveDate),
-    /// A UTC clock component retaining supplied precision.
+    /// A UTC clock component with the supplied precision.
     Time(AdifTime),
     /// ADIF direction, degrees and exact decimal minutes.
     Location(AdifLocation),
@@ -54,11 +54,11 @@ impl AdifTime {
 pub enum TimePrecision {
     /// The input supplied hours and minutes.
     Minute,
-    /// The input also supplied seconds, including an explicit 00.
+    /// The input also supplied seconds. The seconds can be 00.
     Second,
 }
 
-/// A Location value retaining ADIF's direction, degrees and decimal minutes.
+/// A Location value with ADIF's direction, degrees and decimal minutes.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AdifLocation {
     pub(super) hemisphere: Hemisphere,
@@ -67,7 +67,7 @@ pub struct AdifLocation {
 }
 
 impl AdifLocation {
-    /// Returns the supplied direction, including on a zero coordinate.
+    /// Returns the supplied direction, also for a zero coordinate.
     pub fn hemisphere(&self) -> Hemisphere {
         self.hemisphere
     }

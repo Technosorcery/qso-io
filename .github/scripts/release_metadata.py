@@ -32,7 +32,9 @@ def first_parent_commits(root, before, after):
 
 
 def classify_update(commits, pulls_by_commit, repository, prefix):
-    """Return the authorizing PR number, None for ordinary updates, or fail."""
+    """Return the authorizing PR number or None for ordinary updates.
+
+    Raise ValueError for ambiguous merge attribution or mixed release updates."""
     attributed = []
     releases = []
     for sha in commits:
@@ -83,7 +85,7 @@ def update_metadata(event, root):
 
 
 def release_notes(changelog, version):
-    """Select the reviewed release body, excluding neighboring version sections."""
+    """Select the reviewed release body without adjacent version sections."""
     sections = []
     fence = None
     offset = 0

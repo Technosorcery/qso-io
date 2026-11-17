@@ -13,21 +13,25 @@ pub enum PermissiveSection<'a> {
     Record(PermissiveRecord<'a>),
 }
 
-/// Reads complete ADI sections while preserving unchecked contents.
+/// Reads complete ADI sections with unchecked contents.
 ///
-/// Applies the supplied [`ParseOpts`] encoding and length unit throughout the
-/// input. Names and indicators require UTF-8. Decoding failures remain on fields
-/// and preambles when their boundaries are known.
-/// Invalid lengths, truncation, missing terminators, and UTF-8 errors preventing
-/// scalar boundary discovery are terminal. A terminal error is yielded once,
-/// followed by permanent exhaustion. Duplicate fields remain in source order.
+/// The parser applies the supplied [`ParseOpts`] encoding and length unit
+/// throughout the input. Names and indicators must use UTF-8. Fields and
+/// preambles keep decoding failures if the parser can find their boundaries.
+///
+/// Incorrect lengths, truncation, and missing terminators are terminal errors.
+/// UTF-8 errors that prevent scalar boundary discovery are also terminal. The
+/// parser returns a terminal error once. It then returns no more sections.
+/// Duplicate fields remain in source order.
 #[derive(Debug)]
 pub struct PermissiveParser<'a> {
     sections: framing::Sections<'a, ParseOpts>,
 }
 
 impl<'a> PermissiveParser<'a> {
-    /// Constructs a framing-only parser; input is read when iteration advances.
+    /// Constructs a framing-only parser.
+    ///
+    /// The parser reads input when the iterator advances.
     pub fn new(input: &'a [u8], options: ParseOpts) -> Self {
         Self {
             sections: framing::Sections::new(input, options),

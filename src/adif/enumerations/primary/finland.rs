@@ -3,8 +3,8 @@ use strum::{EnumIter, EnumString, IntoStaticStr};
 
 /// A Finnish municipality identity in ADIF's primary subdivision table.
 ///
-/// The specification's municipality list includes historical municipalities;
-/// the identities describe the ADIF reference set rather than current boundaries.
+/// The specification's municipality list includes historical municipalities.
+/// The identities describe the ADIF reference set rather than current boundaries.
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq, EnumIter, EnumString, IntoStaticStr)]
 #[strum(ascii_case_insensitive)]
 pub enum PrimarySubdivision {

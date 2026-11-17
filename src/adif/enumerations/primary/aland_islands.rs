@@ -1,7 +1,7 @@
 //! Åland Islands municipalities, DXCC entity 5.
 use strum::{EnumIter, EnumString, IntoStaticStr};
 
-/// An Åland Islands primary subdivision supplied by ADIF, including deleted Märket.
+/// An Åland Islands primary subdivision supplied by ADIF, with deleted Märket.
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq, EnumIter, EnumString, IntoStaticStr)]
 #[strum(ascii_case_insensitive)]
 pub enum PrimarySubdivision {
@@ -53,7 +53,7 @@ pub enum PrimarySubdivision {
     /// Vårdö.
     #[strum(serialize = "016")]
     Vardo,
-    /// Märket; marked deleted in the ADIF subdivision table.
+    /// Märket (deleted in the ADIF subdivision table).
     #[strum(serialize = "051")]
     Market,
 }

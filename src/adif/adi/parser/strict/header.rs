@@ -27,7 +27,7 @@ pub enum HeaderEntry<'a> {
 }
 
 impl HeaderEntry<'_> {
-    /// Returns the original descriptor name, including its supplied casing.
+    /// Returns the descriptor name with its supplied casing.
     pub fn name(&self) -> &str {
         match self {
             Self::Field(f) => f.name(),
@@ -35,7 +35,7 @@ impl HeaderEntry<'_> {
         }
     }
 
-    /// Returns the descriptor's original byte range, with an exclusive end.
+    /// Returns the descriptor's byte range in the input, with an exclusive end.
     pub fn descriptor_span(&self) -> Range<usize> {
         match self {
             Self::Field(f) => f.descriptor_span(),
@@ -43,7 +43,7 @@ impl HeaderEntry<'_> {
         }
     }
 
-    /// Returns the payload's original byte range, with an exclusive end.
+    /// Returns the payload's byte range in the input, with an exclusive end.
     pub fn value_span(&self) -> Range<usize> {
         match self {
             Self::Field(f) => f.value_span(),
@@ -52,10 +52,10 @@ impl HeaderEntry<'_> {
     }
 }
 
-/// A complete ADI header with its original preamble and ordered fields.
+/// A complete ADI header with its supplied preamble and ordered fields.
 ///
-/// Its source span ends after EOH's closing `>` and excludes following
-/// separators. Its preamble and fields have successfully decoded text.
+/// Its source span ends after EOH's closing `>` and excludes subsequent
+/// separators. Its preamble and fields have decoded text.
 /// Field names are unique within the header under ASCII case-insensitive
 /// comparison. USERDEF target names are also unique under that comparison.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -68,24 +68,28 @@ pub struct Header<'a> {
 }
 
 impl<'a> Header<'a> {
-    /// Borrows header fields and declarations in their original order.
+    /// Borrows header fields and declarations in their source order.
     pub fn entries(&self) -> &[HeaderEntry<'a>] {
         &self.entries
     }
 
-    /// Finds a header entry by ASCII case-insensitive name, reporting ambiguous matches.
+    /// Finds a header entry by ASCII case-insensitive name.
+    ///
+    /// Multiple matches produce an ambiguity error.
     pub fn entry(&self, name: &str) -> Result<Option<&HeaderEntry<'a>>, LookupError> {
         single_match(name, self.entries_named(name), HeaderEntry::descriptor_span)
     }
 
-    /// Iterates over matching header entries in source order without choosing precedence.
+    /// Iterates over matching header entries in source order without a precedence rule.
     pub fn entries_named<'s>(&'s self, name: &str) -> impl Iterator<Item = &'s HeaderEntry<'a>> {
         self.entries
             .iter()
             .filter(move |entry| entry.name().eq_ignore_ascii_case(name))
     }
 
-    /// Finds an ordinary header field by name, reporting ambiguous matches.
+    /// Finds an ordinary header field by name.
+    ///
+    /// Multiple matches produce an ambiguity error.
     ///
     /// USERDEF descriptors are available through entry lookup.
     pub fn field(&self, name: &str) -> Result<Option<&Field<'a>>, LookupError> {
@@ -100,24 +104,24 @@ impl<'a> Header<'a> {
         })
     }
 
-    /// Borrows the original preamble bytes, including line endings and blanks.
+    /// Borrows the supplied preamble bytes, with line endings and blanks.
     pub fn raw_text(&self) -> &'a [u8] {
         self.text_bytes
     }
 
-    /// Returns the preamble's original byte range, ending before the first `<`.
+    /// Returns the preamble's byte range with its end before the first `<`.
     pub fn text_span(&self) -> Range<usize> {
         self.text_span.clone()
     }
 
     /// Returns the byte range from the preamble's start through EOH's closing `>`.
     ///
-    /// Offsets refer to the original input slice and the end is exclusive.
+    /// Offsets refer to the input slice. The end is exclusive.
     pub fn span(&self) -> Range<usize> {
         self.span.clone()
     }
 
-    /// Borrows the original decoded preamble retained during parsing.
+    /// Borrows the decoded preamble with its supplied spelling.
     pub fn text(&self) -> &str {
         &self.text
     }

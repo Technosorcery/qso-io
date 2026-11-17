@@ -8,7 +8,7 @@ pub enum PrimarySubdivision {
     /// Arkhangelsk (Arkhangelskaya oblast).
     #[strum(serialize = "AR")]
     Arkhangelsk,
-    /// Franz Josef Land; import-only subdivision spelling.
+    /// Franz Josef Land (import-only subdivision spelling).
     #[strum(serialize = "FJL")]
     FranzJosefLand,
 }

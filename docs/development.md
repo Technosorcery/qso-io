@@ -12,7 +12,8 @@ cargo test --doc --locked
 RUSTDOCFLAGS="-D warnings -D missing_docs" cargo doc --no-deps --locked
 ```
 
-The minimum supported Rust version is 1.88. Verify changes with that toolchain:
+The minimum supported Rust version is 1.88. Verify changes with that
+toolchain:
 
 ```sh
 rustup toolchain install 1.88.0 --profile minimal
@@ -20,19 +21,19 @@ cargo +1.88.0 test --all-targets --locked
 cargo +1.88.0 test --doc --locked
 ```
 
-CI runs parser tests on Linux, Windows, and macOS, plus Rust 1.88 on Linux.
-Linux also runs formatting, Clippy, documentation, and package verification,
-including tests from an extracted archive.
+CI runs parser tests on Linux, Windows, and macOS. It also tests Rust 1.88 on
+Linux. The Linux checks cover formatting, Clippy, documentation, and package
+verification. Package verification includes tests from an extracted archive.
 
 ## Updating fixtures
 
 Find source URLs, licenses, and input classifications in
 [Upstream ADI fixtures](../tests/fixtures/README.md). Follow
 [Byte preservation and verification](../tests/fixtures/README.md#byte-preservation-and-verification)
-when updating fixture files.
+for fixture updates.
 
 ## Releases
 
 Follow [Releasing qso-io](releasing.md) for release review, publication, and
-recovery. Configure release access and first publication using
-[One-time release setup](release-setup.md).
+recovery. Follow [One-time release setup](release-setup.md) to configure
+release access and first publication.

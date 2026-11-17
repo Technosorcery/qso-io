@@ -8,7 +8,7 @@ pub enum PrimarySubdivision {
     /// Leningradskaya Oblast.
     #[strum(serialize = "LO")]
     Leningrad,
-    /// Malyj Vysotskij; import-only subdivision spelling.
+    /// Malyj Vysotskij (import-only subdivision spelling).
     #[strum(serialize = "MV")]
     MalyjVysotskij,
 }

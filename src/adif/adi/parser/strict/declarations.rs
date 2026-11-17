@@ -15,7 +15,7 @@ use super::{Stream, decode_located, decoding_error};
 use crate::adif::DataType;
 use crate::adif::{number::parse_number, text::check_text};
 
-/// A parsed USERDEFn header declaration, retaining its original spelling and bytes.
+/// A parsed USERDEFn header declaration with its supplied spelling and bytes.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct UserDefinition<'a> {
     pub(super) specifier: DataSpecifier<'a>,
@@ -31,7 +31,7 @@ pub struct UserDefinition<'a> {
 }
 
 impl<'a> UserDefinition<'a> {
-    /// Returns the original USERDEFn descriptor name.
+    /// Returns the supplied USERDEFn descriptor name.
     pub fn name(&self) -> &str {
         &self.specifier.name
     }
@@ -46,7 +46,7 @@ impl<'a> UserDefinition<'a> {
         &self.field_name
     }
 
-    /// Returns the supplied record-field type indicator, or None when omitted.
+    /// Returns the supplied record-field type indicator, or None if it is absent.
     pub fn data_type(&self) -> Option<DataType> {
         self.specifier.type_indicator
     }
@@ -61,22 +61,22 @@ impl<'a> UserDefinition<'a> {
         self.specifier.length
     }
 
-    /// Borrows the original declaration payload bytes.
+    /// Borrows the supplied declaration payload bytes.
     pub fn raw_data(&self) -> &'a [u8] {
         self.raw_data
     }
 
-    /// Borrows the original decoded declaration spelling.
+    /// Borrows the supplied decoded declaration spelling.
     pub fn text(&self) -> &str {
         &self.text
     }
 
-    /// Returns the descriptor's original byte range, with an exclusive end.
+    /// Returns the descriptor's byte range in the input, with an exclusive end.
     pub fn descriptor_span(&self) -> Range<usize> {
         self.descriptor_span.clone()
     }
 
-    /// Returns the payload's original byte range, with an exclusive end.
+    /// Returns the payload's byte range in the input, with an exclusive end.
     pub fn value_span(&self) -> Range<usize> {
         self.value_span.clone()
     }
@@ -85,7 +85,7 @@ impl<'a> UserDefinition<'a> {
 /// An enumeration or exact numeric range declared by USERDEFn.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum UserDefinitionConstraint {
-    /// String members in supplied order, preserving spelling; members must be nonempty.
+    /// Nonempty String members with their supplied spelling and order.
     Enumeration(Vec<String>),
     /// A range whose upper bound is strictly greater than its lower bound.
     Range {
@@ -128,7 +128,7 @@ pub enum UserDefinitionValueError {
         /// Type-specific numeric grammar reason.
         cause: crate::adif::value::ValueError,
     },
-    /// A Number falls outside the declaration's inclusive bounds.
+    /// A Number is outside the declaration's inclusive bounds.
     #[error("value is outside inclusive range {lower} through {upper}")]
     OutOfRange {
         /// Exact inclusive lower bound.
@@ -136,7 +136,7 @@ pub enum UserDefinitionValueError {
         /// Exact inclusive upper bound.
         upper: BigDecimal,
     },
-    /// The original spelling matches no member under default Unicode folding.
+    /// The supplied spelling matches no member under default Unicode folding.
     #[error("value is not a member of the declared enumeration")]
     NotInEnumeration,
 }

@@ -46,7 +46,7 @@ impl AwardSponsor {
     }
 }
 
-/// An award and facet for which a contact may receive ADIF credit.
+/// An award and facet for which a contact can receive ADIF credit.
 ///
 /// Credit values distinguish, for example, mixed DXCC from its band, mode and
 /// satellite facets. They are not interchangeable with award sponsors

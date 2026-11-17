@@ -253,9 +253,9 @@ pub enum SecondarySubdivisionAlt<'a> {
 impl<'a> SecondarySubdivisionAlt<'a> {
     /// Parses an enumeration name and its code, separated by a colon.
     ///
-    /// NZ_Regions codes require membership in the supplied region/district table.
-    /// Other enumeration codes are retained without external membership checks.
-    /// Components must be nonempty. Name matching ignores ASCII case without
+    /// NZ_Regions codes must be members of the supplied region/district table.
+    /// The method keeps other enumeration codes without external membership checks.
+    /// Components cannot be empty. Name matching ignores ASCII case without
     /// trimming.
     pub fn parse_member(member: &'a str) -> Option<Self> {
         let (name, code) = member.split_once(':')?;

@@ -1,7 +1,7 @@
 //! Austrian subdivisions, DXCC 206, ADIF 3.1.8 III.B.12.
 use strum::{EnumIter, EnumString, IntoStaticStr};
 
-/// Austrian districts recognized by ADIF; historical meanings are retained.
+/// Austrian districts in ADIF, with historical meanings.
 #[derive(Debug, Copy, Clone, Eq, PartialEq, EnumIter, EnumString, IntoStaticStr)]
 #[strum(ascii_case_insensitive)]
 pub enum PrimarySubdivision {
@@ -185,7 +185,7 @@ pub enum PrimarySubdivision {
     /// Bad Aussee, for contacts before 2012/01/01.
     #[strum(serialize = "BA")]
     BadAussee,
-    /// Bruck/Mur before 2013/01/01; Bruck-Mürzzuschlag on or after that date.
+    /// Bruck/Mur before 2013/01/01, Bruck-Mürzzuschlag on or after that date.
     #[strum(serialize = "BM")]
     BruckMurBruckMurzzuschlag,
     /// Deutschlandsberg.
