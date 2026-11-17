@@ -6,8 +6,6 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 This project follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
-
 ## [0.1.0](https://github.com/Technosorcery/qso-io/releases/tag/v0.1.0) - 2026-11-17
 
 ### Added
