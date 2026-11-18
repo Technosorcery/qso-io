@@ -3,15 +3,18 @@
 use std::{borrow::Cow, ops::Range};
 
 use winnow::{
-    LocatingSlice, Parser as _, Result, Stateful,
+    LocatingSlice, Parser as _, Stateful,
     combinator::opt,
     error::{StrContext, StrContextValue},
-    stream::{Location, Stream as _},
+    stream::Stream as _,
     token::take_till,
 };
 
+use super::{
+    error::{Result, StructuralError},
+    options::ParseEncoding,
+};
 use crate::adif::DecodeError;
-use crate::adif::adi::parser::options::ParseEncoding;
 
 pub mod field;
 pub mod header;
@@ -45,7 +48,6 @@ enum Phase {
 #[derive(Debug)]
 pub(super) struct Sections<'a, S> {
     input: Input<'a, S>,
-    input_len: usize,
     phase: Phase,
 }
 
@@ -56,16 +58,15 @@ impl<'a, S: std::fmt::Debug> Sections<'a, S> {
                 input: LocatingSlice::new(bytes),
                 state,
             },
-            input_len: bytes.len(),
             phase: Phase::Start,
         }
     }
 
-    pub(super) fn next<O>(
+    pub(super) fn next<'header, O>(
         &mut self,
-        mut header: impl FnMut(&mut Input<'a, S>) -> Result<O>,
-        mut record: impl FnMut(&mut Input<'a, S>) -> Result<O>,
-    ) -> Option<std::result::Result<O, super::error::StructuralError>> {
+        mut header: impl FnMut(&mut Input<'a, S>) -> Result<O, StructuralError<'header>>,
+        mut record: impl FnMut(&mut Input<'a, S>) -> Result<O, StructuralError<'header>>,
+    ) -> Option<std::result::Result<O, StructuralError<'header>>> {
         if self.phase == Phase::Finished {
             return None;
         }
@@ -88,24 +89,20 @@ impl<'a, S: std::fmt::Debug> Sections<'a, S> {
                 self.phase = Phase::Finished;
                 None
             }
-            Err(context) => {
+            Err(error) => {
                 self.phase = Phase::Finished;
-                Some(Err(super::error::StructuralError::from_context(
-                    context,
-                    self.input.current_token_start(),
-                    self.input_len,
-                )))
+                Some(Err(error))
             }
         }
     }
 }
 
-pub(super) fn fields<'a, S: std::fmt::Debug, O>(
+pub(super) fn fields<'a, 'header, S: std::fmt::Debug, O>(
     input: &mut Input<'a, S>,
     marker: &'static str,
     minimum: usize,
-    mut entry: impl FnMut(&mut Input<'a, S>) -> Result<O>,
-) -> Result<(Vec<O>, Range<usize>)> {
+    mut entry: impl FnMut(&mut Input<'a, S>) -> Result<O, StructuralError<'header>>,
+) -> Result<(Vec<O>, Range<usize>), StructuralError<'header>> {
     use winnow::{
         ascii::{Caseless, line_ending},
         combinator::{eof, not, preceded, repeat_till, terminated},

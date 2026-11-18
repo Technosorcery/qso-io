@@ -42,7 +42,7 @@ impl<'a> PermissiveParser<'a> {
 impl<'a> Iterator for PermissiveParser<'a> {
     type Item = std::result::Result<
         crate::adif::adi::parser::permissive::PermissiveSection<'a>,
-        super::error::StructuralError,
+        super::error::StructuralError<'static>,
     >;
 
     fn next(&mut self) -> Option<Self::Item> {

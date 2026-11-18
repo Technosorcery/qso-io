@@ -40,11 +40,12 @@ fn failure(raw: &[u8], kind: char, reason: ValueError, relative: Range<usize>) {
         + 1;
     bytes.append(&mut bad);
     bytes.extend_from_slice(b"<X:1>C<EOR>");
-    let mut parser = StrictParser::new(&bytes, ParseOpts::default());
+    let mut parser_owner = StrictParser::new(&bytes, ParseOpts::default());
+    let mut parser = parser_owner.into_iter();
     let _ = next_section(&mut parser);
     let error = next_error(&mut parser);
     assert!(
-        matches!(error.kind(),error::StructuralErrorKind::InvalidValue{cause,..} if *cause==reason),
+        matches!(&error,error::StructuralError::InvalidValue{cause,..} if *cause == reason),
         "input {raw:?}, type {kind}: expected {reason:?}, got {error:?}"
     );
     assert_eq!(
@@ -64,7 +65,8 @@ fn invalid_declared_values_are_terminal() {
         &b"<X:4:T>2400<EOR>"[..],
         &b"<X:1:S>\t<EOR>"[..],
     ] {
-        let mut parser = StrictParser::new(bytes, ParseOpts::default());
+        let mut parser_owner = StrictParser::new(bytes, ParseOpts::default());
+        let mut parser = parser_owner.into_iter();
         let _ = next_error(&mut parser);
         assert_exhausted(&mut parser);
     }
@@ -87,9 +89,14 @@ fn numbers_follow_adif_grammar_without_narrowing_or_normalizing_spelling() {
             ParseEncoding::Ascii,
             LengthUnit::Bytes,
         );
-        let record = parse_file(&bytes, ParseEncoding::Ascii, LengthUnit::Bytes)
-            .records
-            .remove(0);
+        let mut owner = StrictParser::new(
+            &bytes,
+            ParseOpts {
+                encoding: ParseEncoding::Ascii,
+                field_length: LengthUnit::Bytes,
+            },
+        );
+        let record = parse_file(&mut owner).records.remove(0);
         let field = named(&record, "X");
         let Some(Value::Number(n)) = field.value() else {
             panic!("expected Some(Value::Number(n)), got {:?}", field.value());
@@ -122,9 +129,14 @@ fn numbers_follow_adif_grammar_without_narrowing_or_normalizing_spelling() {
 fn boolean_values_accept_only_y_or_n() {
     for (raw, want) in [(b"Y", true), (b"y", true), (b"N", false), (b"n", false)] {
         let bytes = document(raw, Some('B'), ParseEncoding::Ascii, LengthUnit::Bytes);
-        let rec = parse_file(&bytes, ParseEncoding::Ascii, LengthUnit::Bytes)
-            .records
-            .remove(0);
+        let mut owner = StrictParser::new(
+            &bytes,
+            ParseOpts {
+                encoding: ParseEncoding::Ascii,
+                field_length: LengthUnit::Bytes,
+            },
+        );
+        let rec = parse_file(&mut owner).records.remove(0);
         assert_eq!(
             named(&rec, "X").value(),
             Some(&Value::Boolean(want)),
@@ -145,9 +157,14 @@ fn dates_enforce_adif_syntax_years_and_calendar_validity() {
             ParseEncoding::Ascii,
             LengthUnit::Bytes,
         );
-        let rec = parse_file(&bytes, ParseEncoding::Ascii, LengthUnit::Bytes)
-            .records
-            .remove(0);
+        let mut owner = StrictParser::new(
+            &bytes,
+            ParseOpts {
+                encoding: ParseEncoding::Ascii,
+                field_length: LengthUnit::Bytes,
+            },
+        );
+        let rec = parse_file(&mut owner).records.remove(0);
         let Some(Value::Date(d)) = named(&rec, "X").value() else {
             panic!(
                 "expected Some(Value::Date(d)), got {:?}",
@@ -186,9 +203,14 @@ fn times_preserve_explicit_seconds_and_reject_invalid_clock_components() {
             ParseEncoding::Ascii,
             LengthUnit::Bytes,
         );
-        let rec = parse_file(&bytes, ParseEncoding::Ascii, LengthUnit::Bytes)
-            .records
-            .remove(0);
+        let mut owner = StrictParser::new(
+            &bytes,
+            ParseOpts {
+                encoding: ParseEncoding::Ascii,
+                field_length: LengthUnit::Bytes,
+            },
+        );
+        let rec = parse_file(&mut owner).records.remove(0);
         let Some(Value::Time(t)) = named(&rec, "X").value() else {
             panic!(
                 "expected Some(Value::Time(t)), got {:?}",
@@ -227,9 +249,14 @@ fn locations_preserve_adif_components_and_direction_at_zero() {
             ParseEncoding::Ascii,
             LengthUnit::Bytes,
         );
-        let rec = parse_file(&bytes, ParseEncoding::Ascii, LengthUnit::Bytes)
-            .records
-            .remove(0);
+        let mut owner = StrictParser::new(
+            &bytes,
+            ParseOpts {
+                encoding: ParseEncoding::Ascii,
+                field_length: LengthUnit::Bytes,
+            },
+        );
+        let rec = parse_file(&mut owner).records.remove(0);
         let Some(Value::Location(l)) = named(&rec, "X").value() else {
             panic!(
                 "expected Some(Value::Location(l)), got {:?}",
@@ -351,15 +378,14 @@ fn declared_text_uses_encoding_specific_rules() {
                     (Some('E'), string[mode]),
                 ] {
                     let bytes = document(raw, indicator, encoding, unit);
-                    let result = StrictParser::new(
+                    let mut owner = StrictParser::new(
                         &bytes,
                         ParseOpts {
                             encoding,
                             field_length: unit,
                         },
-                    )
-                    .next()
-                    .unwrap_or_else(|| {
+                    );
+                    let result = owner.into_iter().next().unwrap_or_else(|| {
                         panic!(
                             "expected a section for {raw:?}, {encoding:?}, {unit:?}, {indicator:?}"
                         )
@@ -389,14 +415,14 @@ fn declared_text_uses_encoding_specific_rules() {
                 ] {
                     for indicator in [None, Some('S'), Some('M'), Some('E')] {
                         let bytes = document(raw, indicator, encoding, unit);
-                        let result = StrictParser::new(
+                        let mut owner = StrictParser::new(
                             &bytes,
                             ParseOpts {
                                 encoding,
                                 field_length: unit,
                             },
-                        )
-                        .next()
+                        );
+                        let result = owner.into_iter().next()
                         .unwrap_or_else(|| panic!("expected a section for {raw:?}, {encoding:?}, {unit:?}, {indicator:?}"));
                         assert_eq!(
                             result.is_ok(),
@@ -423,13 +449,14 @@ fn numeric_grammars_remain_ascii_in_utf8_mode() {
             let start = bytes.iter().position(|b| *b == b'>').expect(
                 "descriptor should contain > because the test generator appends that delimiter",
             ) + 1;
-            let mut parser = StrictParser::new(
+            let mut parser_owner = StrictParser::new(
                 &bytes,
                 ParseOpts {
                     encoding: ParseEncoding::Utf8,
                     field_length: unit,
                 },
             );
+            let mut parser = parser_owner.into_iter();
             let error = next_error(&mut parser);
             assert_eq!(
                 error.span(),
@@ -437,7 +464,7 @@ fn numeric_grammars_remain_ascii_in_utf8_mode() {
                 "input {text:?}, type {kind}, unit {unit:?}: {error:?}"
             );
             assert!(
-                matches!(error.kind(),error::StructuralErrorKind::InvalidValue{cause,..} if *cause==reason),
+                matches!(&error,error::StructuralError::InvalidValue{cause,..} if *cause == reason),
                 "input {text:?}, type {kind}, unit {unit:?}: expected {reason:?}, got {error:?}"
             );
         }
@@ -463,8 +490,15 @@ fn integer_types_preserve_magnitude_and_spelling() {
             ParseEncoding::Ascii,
             LengthUnit::Bytes,
         );
-        let field = parsed_field(&bytes, name, ParseEncoding::Ascii, LengthUnit::Bytes)
-            .unwrap_or_else(|e| panic!("{kind:?} {text:?}: {e}"));
+        let mut owner = StrictParser::new(
+            &bytes,
+            ParseOpts {
+                encoding: ParseEncoding::Ascii,
+                field_length: LengthUnit::Bytes,
+            },
+        );
+        let field =
+            parsed_field(&mut owner, name).unwrap_or_else(|e| panic!("{kind:?} {text:?}: {e}"));
         assert!(
             matches!(field.value(), Some(Value::Integer(n)) if n.to_string() == expected),
             "{field:?}"
@@ -479,8 +513,15 @@ fn integer_types_preserve_magnitude_and_spelling() {
             ParseEncoding::Ascii,
             LengthUnit::Bytes,
         );
-        let error = parsed_field(&bytes, "TEN_TEN", ParseEncoding::Ascii, LengthUnit::Bytes)
-            .expect_err("invalid PositiveInteger should fail");
+        let mut owner = StrictParser::new(
+            &bytes,
+            ParseOpts {
+                encoding: ParseEncoding::Ascii,
+                field_length: LengthUnit::Bytes,
+            },
+        );
+        let error =
+            parsed_field(&mut owner, "TEN_TEN").expect_err("invalid PositiveInteger should fail");
         assert_eq!(
             error.span(),
             11 + relative.start..11 + relative.end,
@@ -505,8 +546,15 @@ fn identifier_types_enforce_only_the_defined_grammar() {
             ParseEncoding::Ascii,
             LengthUnit::Bytes,
         );
-        let field = parsed_field(&bytes, name, ParseEncoding::Ascii, LengthUnit::Bytes)
-            .unwrap_or_else(|e| panic!("{kind:?} {text}: {e}"));
+        let mut owner = StrictParser::new(
+            &bytes,
+            ParseOpts {
+                encoding: ParseEncoding::Ascii,
+                field_length: LengthUnit::Bytes,
+            },
+        );
+        let field =
+            parsed_field(&mut owner, name).unwrap_or_else(|e| panic!("{kind:?} {text}: {e}"));
         if kind == DataType::POTARefList {
             assert!(
                 matches!(field.value(), Some(Value::List(items)) if items.len()==1 && items[0]==text),
@@ -539,13 +587,16 @@ fn identifier_types_enforce_only_the_defined_grammar() {
             .position(|b| *b == b'>')
             .expect("test descriptor should contain >")
             + 1;
-        let error = parsed_field(&bytes, name, ParseEncoding::Ascii, LengthUnit::Bytes)
-            .expect_err("invalid reference should fail");
+        let mut owner = StrictParser::new(
+            &bytes,
+            ParseOpts {
+                encoding: ParseEncoding::Ascii,
+                field_length: LengthUnit::Bytes,
+            },
+        );
+        let error = parsed_field(&mut owner, name).expect_err("invalid reference should fail");
         assert!(
-            matches!(
-                error.kind(),
-                error::StructuralErrorKind::InvalidValue { .. }
-            ),
+            matches!(&error, error::StructuralError::InvalidValue { .. }),
             "{error:?}"
         );
         assert_eq!(
@@ -566,8 +617,14 @@ fn sota_checks_do_not_invent_a_reference_number_grammar() {
             ParseEncoding::Ascii,
             LengthUnit::Bytes,
         );
-        let field = parsed_field(&bytes, "SOTA_REF", ParseEncoding::Ascii, LengthUnit::Bytes)
-            .unwrap_or_else(|e| panic!("{text}: {e}"));
+        let mut owner = StrictParser::new(
+            &bytes,
+            ParseOpts {
+                encoding: ParseEncoding::Ascii,
+                field_length: LengthUnit::Bytes,
+            },
+        );
+        let field = parsed_field(&mut owner, "SOTA_REF").unwrap_or_else(|e| panic!("{text}: {e}"));
         assert_eq!(field.text(), text);
     }
     for (text, relative) in [("G", 1..1), ("G/", 2..2), ("/G", 0..0)] {
@@ -578,8 +635,15 @@ fn sota_checks_do_not_invent_a_reference_number_grammar() {
             ParseEncoding::Ascii,
             LengthUnit::Bytes,
         );
-        let error = parsed_field(&bytes, "SOTA_REF", ParseEncoding::Ascii, LengthUnit::Bytes)
-            .expect_err("missing SOTA component should fail");
+        let mut owner = StrictParser::new(
+            &bytes,
+            ParseOpts {
+                encoding: ParseEncoding::Ascii,
+                field_length: LengthUnit::Bytes,
+            },
+        );
+        let error =
+            parsed_field(&mut owner, "SOTA_REF").expect_err("missing SOTA component should fail");
         assert_eq!(
             error.span(),
             12 + relative.start..12 + relative.end,

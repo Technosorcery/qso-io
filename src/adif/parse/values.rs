@@ -328,7 +328,7 @@ pub(crate) fn location(text: &str) -> Result<AdifLocation, ValueFailure> {
         });
     }
 
-    let minutes = parse_number(&text.as_bytes()[5..11]).map_err(|e| ValueFailure {
+    let minutes = parse_number(&text[5..11]).map_err(|e| ValueFailure {
         cause: reason,
         span: 5 + e.span.start..5 + e.span.end,
         numeric_cause: e.cause.map(Into::into),
@@ -344,7 +344,7 @@ pub(crate) fn location(text: &str) -> Result<AdifLocation, ValueFailure> {
 
 /// Parses an exact ADIF number from decoded text.
 pub(crate) fn number(text: &str) -> Result<bigdecimal::BigDecimal, ValueFailure> {
-    parse_number(text.as_bytes()).map_err(|error| ValueFailure {
+    parse_number(text).map_err(|error| ValueFailure {
         cause: ValueError::InvalidNumber,
         span: error.span,
         numeric_cause: error.cause.map(Into::into),

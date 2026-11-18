@@ -4,15 +4,13 @@ use std::ops::Range;
 
 /// Failure to select a single field or header entry by name.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
-pub enum LookupError {
-    /// Multiple descriptors match the requested name under ASCII case-insensitive comparison.
-    #[error("ambiguous lookup for {name:?}: matching descriptors at {descriptor_spans:?}")]
-    Ambiguous {
-        /// The requested lookup spelling.
-        name: String,
-        /// Every matching descriptor's exclusive-end byte range in source order.
-        descriptor_spans: Vec<Range<usize>>,
-    },
+#[error("ambiguous lookup for {name:?}: matching descriptors at {descriptor_spans:?}")]
+pub struct LookupError {
+    /// The requested lookup spelling.
+    pub name: String,
+    /// Byte ranges of matching descriptors in the parser's input, in source
+    /// order and with exclusive ends.
+    pub descriptor_spans: Vec<Range<usize>>,
 }
 
 pub(super) fn single_match<'s, T: 's>(
@@ -28,7 +26,7 @@ pub(super) fn single_match<'s, T: 's>(
     };
     let mut descriptor_spans = vec![span(first), span(second)];
     descriptor_spans.extend(matches.map(span));
-    Err(LookupError::Ambiguous {
+    Err(LookupError {
         name: name.to_owned(),
         descriptor_spans,
     })

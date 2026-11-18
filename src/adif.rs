@@ -244,13 +244,10 @@ impl DataType {
 
 /// Failure to recognize a supplied ADIF type indicator.
 #[derive(Debug, Error)]
-pub enum DataTypeError {
-    #[error("Unknown type specifier: {0}")]
-    /// The supplied text is not a recognized single type indicator.
-    UnknownTypeSpecifier(
-        /// Supplied unrecognized indicator text, with its supplied casing.
-        String,
-    ),
+#[error("Unknown type specifier: {supplied}")]
+pub struct DataTypeError {
+    /// Supplied unrecognized indicator text, with its supplied casing.
+    pub supplied: String,
 }
 
 impl TryFrom<&str> for DataType {
@@ -268,7 +265,9 @@ impl TryFrom<&str> for DataType {
             "G" | "g" => Ok(DataType::IntlMultilineString),
             "E" | "e" => Ok(DataType::Enumeration),
             "L" | "l" => Ok(DataType::Location),
-            u => Err(DataTypeError::UnknownTypeSpecifier(u.to_owned())),
+            u => Err(DataTypeError {
+                supplied: u.to_owned(),
+            }),
         }
     }
 }

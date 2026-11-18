@@ -3,16 +3,16 @@
 use std::{borrow::Cow, ops::Range};
 
 use winnow::{
-    Parser as _, Result,
+    Parser as _,
     ascii::digit1,
     combinator::opt,
-    error::{ContextError, FromExternalError, StrContext, StrContextValue},
+    error::StrContext,
     stream::{Location, Stream as _},
     token::{take_till, take_until},
 };
 
 use super::super::{
-    error::{AdiError, SyntaxErrorKind},
+    error::{Result, StructuralError, SyntaxErrorKind},
     options::{LengthUnit, ParseEncoding, ParseOpts},
 };
 use super::{Input, decode_text};
@@ -97,7 +97,9 @@ pub(in crate::adif::adi::parser) fn frame_value<'a, S: std::fmt::Debug>(
             text: Ok(Cow::Borrowed("")),
         });
     }
-    let truncation = |available| AdiError::TruncatedValue {
+    let end = input.current_token_start() + input.eof_offset();
+    let truncation = |available| StructuralError::TruncatedValue {
+        span: end..end,
         field_name: specifier.name.to_string(),
         declared: specifier.length,
         available,
@@ -107,45 +109,26 @@ pub(in crate::adif::adi::parser) fn frame_value<'a, S: std::fmt::Debug>(
     let byte_count = match (parse_opts.encoding, parse_opts.field_length) {
         (ParseEncoding::Utf8, LengthUnit::UnicodeScalars) => {
             let original: &[u8] = input.input.as_ref();
-            let mut remaining = original;
+            let prefix = &original[..specifier.length.saturating_mul(4).min(original.len())];
+            let chunk = prefix.utf8_chunks().next();
+            let valid = chunk.as_ref().map_or("", |chunk| chunk.valid());
+            let mut characters = valid.char_indices();
             let mut byte_count = 0;
 
             for idx in 0..specifier.length {
-                let (character, width) = bstr::decode_utf8(remaining);
-                if character.is_none() {
+                let Some((offset, character)) = characters.next() else {
                     let _ = input.next_slice(byte_count);
-
-                    let error = if remaining.is_empty() {
-                        let mut error = ContextError::from_external_error(input, truncation(idx));
-                        error.push(StrContext::Label("field data"));
-
-                        error
-                    } else {
+                    std::str::from_utf8(prefix).map_err(|cause| {
                         let start = input.current_token_start();
-                        let cause =
-                            std::str::from_utf8(&original[..byte_count + remaining.len().min(4)])
-                                .expect_err("prefix should be invalid UTF-8 because decode_utf8 rejected its leading scalar");
-                        let mut error = ContextError::from_external_error(
-                            input,
-                            AdiError::Decoding {
-                                span: start
-                                    ..start + cause.error_len().unwrap_or(remaining.len().min(4)),
-                                cause: DecodeError::Utf8(cause),
-                            },
-                        );
-                        error.push(StrContext::Label("field data"));
-                        error.push(StrContext::Expected(StrContextValue::Description(
-                            "a complete, valid UTF-8 scalar",
-                        )));
-
-                        error
-                    };
-
-                    return Err(error);
-                }
-
-                byte_count += width;
-                remaining = &remaining[width..];
+                        StructuralError::Decoding {
+                            span: start
+                                ..start + cause.error_len().unwrap_or(prefix.len() - byte_count),
+                            cause: DecodeError::Utf8(cause),
+                        }
+                    })?;
+                    return Err(truncation(idx));
+                };
+                byte_count = offset + character.len_utf8();
             }
             byte_count
         }
@@ -156,9 +139,8 @@ pub(in crate::adif::adi::parser) fn frame_value<'a, S: std::fmt::Debug>(
             if available_bytes < byte_count {
                 let _ = input.next_slice(available_bytes);
 
-                let mut error =
-                    ContextError::from_external_error(input, truncation(available_bytes));
-                error.push(StrContext::Label("field data"));
+                let error = truncation(available_bytes);
+
                 return Err(error);
             }
 
@@ -184,44 +166,38 @@ pub(in crate::adif::adi::parser) fn frame_value<'a, S: std::fmt::Debug>(
 fn declared_length<S: std::fmt::Debug>(input: &mut Input<'_, S>) -> Result<usize> {
     let checkpoint = input.checkpoint();
     let start = input.current_token_start();
-    let digits: &[u8] = match digit1::<_, ContextError>.parse_next(input) {
+    let digits: &[u8] = match digit1::<_, StructuralError>.parse_next(input) {
         Ok(digits) => digits,
         Err(_) => {
             let span = start..start + usize::from(input.eof_offset() != 0);
-            let mut error = ContextError::from_external_error(
-                input,
-                AdiError::Syntax {
-                    reason: SyntaxErrorKind::InvalidLength,
-                    span,
-                    cause: None,
-                },
-            );
-            error.push(StrContext::Label("length"));
+            let error = StructuralError::Syntax {
+                reason: SyntaxErrorKind::InvalidLength,
+                span,
+            };
+
             return Err(error);
         }
     };
-    // digit1 on this byte stream returns ASCII digits only.
-    let number = std::str::from_utf8(digits)
-        .expect("length should be UTF-8 because digit1 accepted only ASCII digits");
+    let length = digits.iter().try_fold(0usize, |value, byte| {
+        value
+            .checked_mul(10)
+            .and_then(|value| value.checked_add(usize::from(byte - b'0')))
+    });
+    if let Some(length) = length {
+        return Ok(length);
+    }
+
+    // Preserve the standard integer error from the supplied spelling on overflow.
+    let number = descriptor_text(digits, start, |source| {
+        SyntaxErrorKind::InvalidNameEncoding { source }
+    })?;
     number.parse::<usize>().map_err(|cause| {
         input.reset(&checkpoint);
-        let mut error = ContextError::from_external_error(
-            input,
-            AdiError::Syntax {
-                reason: SyntaxErrorKind::LengthOverflow,
-                span: start..start + digits.len(),
-                cause: Some(cause),
-            },
-        );
-        error.push(StrContext::Label("length"));
-        error
+        StructuralError::Syntax {
+            reason: SyntaxErrorKind::LengthOverflow { source: cause },
+            span: start..start + digits.len(),
+        }
     })
-}
-
-pub(in crate::adif::adi::parser) fn data_specifier<'a, S: std::fmt::Debug>(
-    input: &mut Input<'a, S>,
-) -> Result<Specifier<'a>> {
-    descriptor(input, |_, _, _| Ok(()))
 }
 
 pub(in crate::adif::adi::parser) fn descriptor<'a, S: std::fmt::Debug>(
@@ -230,22 +206,16 @@ pub(in crate::adif::adi::parser) fn descriptor<'a, S: std::fmt::Debug>(
 ) -> Result<Specifier<'a>> {
     '<'.parse_next(input)?;
     let (name, name_span) = take_until(0.., ":").with_span().parse_next(input)?;
-    let name = descriptor_text(
-        input,
-        name,
-        name_span.start,
-        SyntaxErrorKind::InvalidNameEncoding,
-    )?;
+    let name = descriptor_text(name, name_span.start, |source| {
+        SyntaxErrorKind::InvalidNameEncoding { source }
+    })?;
     ':'.parse_next(input)?;
     let length = declared_length(input)?;
     let type_indicator = if opt(':').parse_next(input)?.is_some() {
         let (bytes, span) = take_till(0.., b'>').with_span().parse_next(input)?;
-        let code = descriptor_text(
-            input,
-            bytes,
-            span.start,
-            SyntaxErrorKind::InvalidIndicatorEncoding,
-        )?;
+        let code = descriptor_text(bytes, span.start, |source| {
+            SyntaxErrorKind::InvalidIndicatorEncoding { source }
+        })?;
         check_indicator(input, code, span)?;
         Some(code)
     } else {
@@ -259,34 +229,29 @@ pub(in crate::adif::adi::parser) fn descriptor<'a, S: std::fmt::Debug>(
     })
 }
 
-pub(in crate::adif::adi::parser) fn descriptor_text<'a, S: std::fmt::Debug>(
-    input: &Input<'a, S>,
-    bytes: &'a [u8],
+pub(in crate::adif::adi::parser) fn descriptor_text(
+    bytes: &[u8],
     start: usize,
-    reason: SyntaxErrorKind,
-) -> Result<&'a str> {
-    str::from_utf8(bytes).map_err(|cause| {
-        ContextError::from_external_error(
-            input,
-            AdiError::DescriptorEncoding {
-                reason,
-                span: start + cause.valid_up_to()
-                    ..start
-                        + cause.valid_up_to()
-                        + cause
-                            .error_len()
-                            .unwrap_or(bytes.len() - cause.valid_up_to()),
-                cause: String::from_utf8(bytes.to_vec()).expect_err(
-                    "descriptor bytes should fail String decoding because the same bytes failed UTF-8 validation"),
-            },
-        )
+    reason: impl FnOnce(std::str::Utf8Error) -> SyntaxErrorKind,
+) -> Result<&str> {
+    str::from_utf8(bytes).map_err(|cause| StructuralError::Syntax {
+        reason: reason(cause),
+        span: start + cause.valid_up_to()
+            ..start
+                + cause.valid_up_to()
+                + cause
+                    .error_len()
+                    .unwrap_or(bytes.len() - cause.valid_up_to()),
     })
 }
 
 pub(in crate::adif::adi::parser) fn parse<'a>(
     input: &mut Input<'a, ParseOpts>,
 ) -> Result<PermissiveField<'a>> {
-    let (specifier, span) = data_specifier.with_span().parse_next(input)?;
+    let (specifier, span) =
+        (|input: &mut Input<'a, ParseOpts>| descriptor(input, |_, _, _| Ok(())))
+            .with_span()
+            .parse_next(input)?;
     let options = input.state;
     frame_value(input, specifier, span, options)
 }

@@ -3,14 +3,12 @@
 use std::collections::HashMap;
 use std::{borrow::Cow, ops::Range};
 
-use winnow::{
-    Parser as _, Result,
-    error::{ContextError, FromExternalError, StrContext},
-    stream::Stream as _,
-    token::take_till,
-};
+use winnow::{Parser as _, error::StrContext, stream::Stream as _, token::take_till};
 
-use super::super::{error::AdiError, framing};
+use super::super::{
+    error::{Result, StructuralError},
+    framing,
+};
 use super::declarations::UserDefinition;
 use super::field::{Field, strict_descriptor, strict_frame_value};
 use super::{Stream, declarations, decode_located, definitions};
@@ -55,9 +53,9 @@ impl HeaderEntry<'_> {
 /// A complete ADI header with its supplied preamble and ordered fields.
 ///
 /// Its source span ends after EOH's closing `>` and excludes subsequent
-/// separators. Its preamble and fields have decoded text.
-/// Field names are unique within the header under ASCII case-insensitive
-/// comparison. USERDEF target names are also unique under that comparison.
+/// separators. Its preamble and fields have decoded text. Field names are
+/// unique within the header under ASCII case-insensitive comparison. USERDEF
+/// target names are also unique under that comparison.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Header<'a> {
     pub(super) span: Range<usize>,
@@ -80,7 +78,8 @@ impl<'a> Header<'a> {
         single_match(name, self.entries_named(name), HeaderEntry::descriptor_span)
     }
 
-    /// Iterates over matching header entries in source order without a precedence rule.
+    /// Iterates over matching header entries in source order without a
+    /// precedence rule.
     pub fn entries_named<'s>(&'s self, name: &str) -> impl Iterator<Item = &'s HeaderEntry<'a>> {
         self.entries
             .iter()
@@ -109,12 +108,14 @@ impl<'a> Header<'a> {
         self.text_bytes
     }
 
-    /// Returns the preamble's byte range with its end before the first `<`.
+    /// Returns the preamble's byte range in the parser's input, with its
+    /// exclusive end before the first `<`.
     pub fn text_span(&self) -> Range<usize> {
         self.text_span.clone()
     }
 
-    /// Returns the byte range from the preamble's start through EOH's closing `>`.
+    /// Returns the byte range from the preamble's start through EOH's closing
+    /// `>`.
     ///
     /// Offsets refer to the input slice. The end is exclusive.
     pub fn span(&self) -> Range<usize> {
@@ -129,6 +130,7 @@ impl<'a> Header<'a> {
 
 pub(super) fn header<'a>(input: &mut Stream<'a>) -> Result<Header<'a>> {
     let mut seen = HashMap::new();
+    let mut targets = HashMap::new();
     let parse_opts = input.state.parser_options;
 
     let (text_bytes, text_span) = take_till(0.., b'<')
@@ -136,10 +138,10 @@ pub(super) fn header<'a>(input: &mut Stream<'a>) -> Result<Header<'a>> {
         .context(StrContext::Label("header text"))
         .parse_next(input)?;
 
-    let text = decode_located(input, text_bytes, parse_opts.encoding, text_span.start)?;
+    let text = decode_located(text_bytes, parse_opts.encoding, text_span.start)?;
 
     let (fields, end_span) = framing::fields(input, "<EOH>", 0, |input| {
-        unique_header_entry(input, &mut seen)
+        unique_header_entry(input, &mut seen, &mut targets)
     })?;
     take_till(0.., b'<').void().parse_next(input)?;
 
@@ -158,38 +160,41 @@ pub(super) fn header_entry<'a>(input: &mut Stream<'a>) -> Result<HeaderEntry<'a>
         let f = strict_frame_value(input, raw_specifier, span)?;
         declarations::parse(input, f).map(HeaderEntry::UserDefinition)
     } else {
-        let resolution =
-            definitions::resolve(&input.state, FieldSection::Header, &specifier, span.clone())
-                .map_err(|error| ContextError::from_external_error(input, error))?;
+        let resolution = definitions::resolve(
+            &input.state,
+            &HashMap::new(),
+            FieldSection::Header,
+            &specifier,
+            span.clone(),
+        )?;
         let f = strict_frame_value(input, raw_specifier, span)?;
         super::values::parse(f, &resolution, input.state.parser_options.encoding)
             .map(HeaderEntry::Field)
-            .map_err(|error| ContextError::from_external_error(input, error))
     }
 }
 
 pub(super) fn unique_header_entry<'a>(
     input: &mut Stream<'a>,
     seen: &mut HashMap<String, Range<usize>>,
+    targets: &mut HashMap<String, Range<usize>>,
 ) -> Result<HeaderEntry<'a>> {
     let checkpoint = input.checkpoint();
     let entry = header_entry(input)?;
     let key = entry.name().to_ascii_uppercase();
 
     if let Some(first) = seen.get(&key) {
-        let cause = AdiError::DuplicateField {
+        let cause = StructuralError::DuplicateField {
             field_name: entry.name().to_owned(),
             first_span: first.clone(),
             second_span: entry.descriptor_span(),
         };
         input.reset(&checkpoint);
-        return Err(ContextError::from_external_error(input, cause));
+        return Err(cause);
     }
 
     seen.insert(key, entry.descriptor_span());
     if let HeaderEntry::UserDefinition(definition) = &entry {
-        definitions::register_user_definition(&mut input.state, definition)
-            .map_err(|error| ContextError::from_external_error(input, error))?;
+        definitions::check_user_definition(targets, definition)?;
     }
     Ok(entry)
 }

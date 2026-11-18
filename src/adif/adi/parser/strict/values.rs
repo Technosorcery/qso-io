@@ -1,10 +1,12 @@
 use std::ops::Range;
 
 use super::definitions::{ResolvedDefinition, TypeSelection};
-use crate::adif::adi::parser::error::{StructuralErrorKind, TypeAlternativeFailure};
+use crate::adif::adi::parser::error::TypeAlternativeFailure;
 use crate::adif::{DataType, parse::values, value::Value};
 
-use super::super::{error::AdiError, framing::field::PermissiveField, options::ParseEncoding};
+use super::super::{
+    error::StructuralError, framing::field::PermissiveField, options::ParseEncoding,
+};
 use super::{
     decoding_error,
     field::{Field, strict_specifier},
@@ -15,7 +17,11 @@ use super::{
 /// The input range uses offsets within `text`; the returned range uses offsets
 /// within the encoded value. Both ranges have exclusive ends. `encoding` is the
 /// source encoding.
-fn source_range(text: &str, range: Range<usize>, encoding: ParseEncoding) -> Range<usize> {
+pub(super) fn source_range(
+    text: &str,
+    range: Range<usize>,
+    encoding: ParseEncoding,
+) -> Range<usize> {
     if encoding != ParseEncoding::Latin1 {
         return range;
     }
@@ -42,7 +48,7 @@ pub(super) fn parse<'a>(
     f: PermissiveField<'a>,
     resolution: &ResolvedDefinition,
     encoding: ParseEncoding,
-) -> Result<Field<'a>, AdiError> {
+) -> Result<Field<'a>, StructuralError<'static>> {
     let specifier = strict_specifier(f.specifier, f.descriptor_span.clone())?;
     let single_kind;
     let kinds = match resolution.selection {
@@ -93,7 +99,7 @@ pub(super) fn parse<'a>(
                 | DataType::IntlMultilineString
         ) && !f.raw_data.is_empty()
         {
-            return Err(AdiError::TypeUnavailableInAdi {
+            return Err(StructuralError::TypeUnavailableInAdi {
                 data_type: kind,
                 span: f.descriptor_span,
             });
@@ -178,7 +184,7 @@ pub(super) fn parse<'a>(
                 values::lists::parse(kind, &text, &check_text).map(Value::List)
             }
             DataType::Digit | DataType::Character | DataType::IntlCharacter => {
-                return Err(AdiError::TypeUnavailableInAdi {
+                return Err(StructuralError::TypeUnavailableInAdi {
                     data_type: kind,
                     span: f.descriptor_span,
                 });
@@ -200,11 +206,13 @@ pub(super) fn parse<'a>(
                 let span = source_range(&text, error.span, encoding);
                 let span = f.value_span.start + span.start..f.value_span.start + span.end;
                 if !matches!(resolution.selection, TypeSelection::Alternatives(_)) {
-                    return Err(AdiError::InvalidValue {
+                    return Err(StructuralError::InvalidValue {
                         field_name: specifier.name.into_owned(),
                         cause: error.cause,
                         span,
-                        numeric_cause: error.numeric_cause,
+                        source: error
+                            .numeric_cause
+                            .map(crate::adif::number::NumericCause::boxed),
                         enumeration: error.enumeration,
                     });
                 }
@@ -218,13 +226,10 @@ pub(super) fn parse<'a>(
         }
     }
     if let Some(first) = failures.first() {
-        return Err(AdiError::Defined {
+        return Err(StructuralError::NoMatchingType {
             span: first.span.clone(),
-            numeric_cause: None,
-            kind: Box::new(StructuralErrorKind::NoMatchingType {
-                field_name: specifier.name.into_owned(),
-                failures,
-            }),
+            field_name: specifier.name.into_owned(),
+            failures,
         });
     }
     // No resolved types: retain unchecked text directly.

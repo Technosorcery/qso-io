@@ -2,9 +2,9 @@
 
 use std::{borrow::Cow, ops::Range};
 
-use winnow::{Parser as _, Result, token::take_till};
+use winnow::{Parser as _, token::take_till};
 
-use super::super::options::ParseOpts;
+use super::super::{error::Result, options::ParseOpts};
 use super::field::PermissiveField;
 use super::{Input, decode_text, field, fields};
 use crate::adif::DecodeError;
@@ -33,7 +33,8 @@ impl<'a> PermissiveHeader<'a> {
         )
     }
 
-    /// Iterates over all matching fields in source order without a precedence rule.
+    /// Iterates over all matching fields in source order without a precedence
+    /// rule.
     pub fn fields_named<'s>(&'s self, name: &str) -> impl Iterator<Item = &'s PermissiveField<'a>> {
         self.fields
             .iter()
@@ -52,12 +53,14 @@ impl<'a> PermissiveHeader<'a> {
         self.text_bytes
     }
 
-    /// Returns the preamble's exclusive-end byte range.
+    /// Returns the preamble's byte range in the parser's input, with an
+    /// exclusive end.
     pub fn text_span(&self) -> Range<usize> {
         self.text_span.clone()
     }
 
-    /// Returns the header's byte range through the closing EOH bracket.
+    /// Returns the header's byte range in the parser's input, through EOH's
+    /// closing `>` and with an exclusive end.
     pub fn span(&self) -> Range<usize> {
         self.span.clone()
     }

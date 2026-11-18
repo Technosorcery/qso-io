@@ -1,16 +1,19 @@
 use super::support::*;
 use qso_io::adif::adi::parser::error;
-use qso_io::adif::adi::parser::error::{StructuralErrorKind, SyntaxErrorKind};
+use qso_io::adif::adi::parser::error::{StructuralError, SyntaxErrorKind};
 use qso_io::adif::adi::parser::options::{LengthUnit, ParseEncoding, ParseOpts};
 use qso_io::adif::adi::parser::strict::{Section, StrictParser};
 
 #[test]
 fn upstream_matir_headerless_fixture_has_one_record() {
-    let file = parse_file(
+    let mut owner = StrictParser::new(
         fixture!("matir-adifparser/testdata/header_none.adi"),
-        ParseEncoding::Ascii,
-        LengthUnit::Bytes,
+        ParseOpts {
+            encoding: ParseEncoding::Ascii,
+            field_length: LengthUnit::Bytes,
+        },
     );
+    let file = parse_file(&mut owner);
     assert!(file.header.is_none());
     assert_eq!(file.records.len(), 1);
     assert_eq!(named(&file.records[0], "MYCALL").text(), "KF4MDV");
@@ -18,11 +21,14 @@ fn upstream_matir_headerless_fixture_has_one_record() {
 
 #[test]
 fn upstream_matir_preamble_fixture_preserves_header_text() {
-    let file = parse_file(
+    let mut owner = StrictParser::new(
         fixture!("matir-adifparser/testdata/header_comment.adi"),
-        ParseEncoding::Ascii,
-        LengthUnit::Bytes,
+        ParseOpts {
+            encoding: ParseEncoding::Ascii,
+            field_length: LengthUnit::Bytes,
+        },
     );
+    let file = parse_file(&mut owner);
     assert_eq!(
         file.header
             .expect("input should yield a header because it starts with a preamble")
@@ -36,7 +42,8 @@ fn upstream_matir_preamble_fixture_preserves_header_text() {
 #[test]
 fn upstream_difa_fixture_preserves_prefix_before_invalid_mode() {
     let bytes = fixture!("difa/examples/sample.adif");
-    let mut parser = StrictParser::new(bytes, ParseOpts::default());
+    let mut parser_owner = StrictParser::new(bytes, ParseOpts::default());
+    let mut parser = parser_owner.into_iter();
     let Section::Header(header) = next_section(&mut parser) else {
         panic!("fixture should start with a header");
     };
@@ -58,7 +65,7 @@ fn upstream_difa_fixture_preserves_prefix_before_invalid_mode() {
     }
     let error = next_error(&mut parser);
     assert!(
-        matches!(error.kind(), error::StructuralErrorKind::InvalidValue {field_name, enumeration: Some("Mode"), ..} if field_name == "MODE"),
+        matches!(&error, error::StructuralError::InvalidValue {field_name, enumeration: Some("Mode"), ..} if field_name == "MODE"),
         "{error:?}"
     );
     assert_eq!(&bytes[error.span()], b"Q65");
@@ -67,11 +74,14 @@ fn upstream_difa_fixture_preserves_prefix_before_invalid_mode() {
 
 #[test]
 fn upstream_wsjtx_fixture_preserves_frequency_and_signal_report_text() {
-    let file = parse_file(
+    let mut owner = StrictParser::new(
         fixture!("adif-parser-ts/test/data/wsjtx.adi"),
-        ParseEncoding::Ascii,
-        LengthUnit::Bytes,
+        ParseOpts {
+            encoding: ParseEncoding::Ascii,
+            field_length: LengthUnit::Bytes,
+        },
     );
+    let file = parse_file(&mut owner);
     assert_eq!(file.records.len(), 1);
     assert_eq!(named(&file.records[0], "CALL").text(), "KA9FOX");
     assert_eq!(named(&file.records[0], "FREQ").text(), "7.076150");
@@ -81,11 +91,14 @@ fn upstream_wsjtx_fixture_preserves_frequency_and_signal_report_text() {
 
 #[test]
 fn upstream_js8call_fixture_preserves_explicit_empty_values() {
-    let file = parse_file(
+    let mut owner = StrictParser::new(
         fixture!("adif-parser-ts/test/data/js8call.adi"),
-        ParseEncoding::Ascii,
-        LengthUnit::Bytes,
+        ParseOpts {
+            encoding: ParseEncoding::Ascii,
+            field_length: LengthUnit::Bytes,
+        },
     );
+    let file = parse_file(&mut owner);
     assert_eq!(file.records.len(), 1);
     let record = &file.records[0];
     assert_eq!(named(record, "CALL").text(), "VE4DL");
@@ -100,11 +113,14 @@ fn upstream_js8call_fixture_preserves_explicit_empty_values() {
 
 #[test]
 fn upstream_transadif_ascii_fixture_preserves_crlf_preamble_and_values() {
-    let file = parse_file(
+    let mut owner = StrictParser::new(
         fixture!("transadif/test-cases/01-plain-examples/1-plain-ascii-in.adi"),
-        ParseEncoding::Ascii,
-        LengthUnit::Bytes,
+        ParseOpts {
+            encoding: ParseEncoding::Ascii,
+            field_length: LengthUnit::Bytes,
+        },
     );
+    let file = parse_file(&mut owner);
     assert!(
         file.header
             .expect("input should yield a header because it starts with a preamble")
@@ -162,7 +178,8 @@ fn upstream_overcount_fixture_has_utf8_bytes_despite_its_preamble_label() {
 #[test]
 fn upstream_unterminated_fixture_has_two_complete_records_before_failure() {
     let bytes = fixture!("matir-adifparser/testdata/readrecord.adi");
-    let mut parser = StrictParser::new(bytes, ParseOpts::default());
+    let mut parser_owner = StrictParser::new(bytes, ParseOpts::default());
+    let mut parser = parser_owner.into_iter();
     let first = record(next_section(&mut parser));
     let second = record(next_section(&mut parser));
     assert_eq!(named(&first, "MYCALL").text(), "KF4MDV");
@@ -170,9 +187,10 @@ fn upstream_unterminated_fixture_has_two_complete_records_before_failure() {
     let error = next_error(&mut parser);
     assert!(
         matches!(
-            error.kind(),
-            StructuralErrorKind::Syntax {
-                reason: SyntaxErrorKind::MissingEor
+            &error,
+            StructuralError::Syntax {
+                reason: SyntaxErrorKind::MissingEor,
+                ..
             }
         ),
         "{error:?}"
@@ -216,7 +234,8 @@ fn undercount_fixture_retains_declared_contents_and_strict_rejection_locations()
             );
         }
         assert_exhausted(&mut p);
-        let mut s = StrictParser::new(bytes, opts);
+        let mut s_owner = StrictParser::new(bytes, opts);
+        let mut s = s_owner.into_iter();
         let _ = next_section(&mut s);
         let e = next_error(&mut s);
         let name = if field_length == LengthUnit::Bytes {
@@ -225,7 +244,7 @@ fn undercount_fixture_retains_declared_contents_and_strict_rejection_locations()
             "name"
         };
         assert!(
-            matches!(e.kind(),StructuralErrorKind::InvalidValue{field_name,..}if field_name==name),
+            matches!(&e,StructuralError::InvalidValue{field_name,..}if field_name==name),
             "{e:?}"
         );
         assert_eq!(&bytes[e.span()], b"\r");
@@ -272,10 +291,11 @@ fn overcount_scalar_fixture_preserves_the_consumed_opening_bracket() {
 #[test]
 fn missing_length_fixture_is_rejected_as_an_invalid_descriptor() {
     let bytes = fixture!("matir-adifparser/testdata/header_version.adi");
-    let mut p = StrictParser::new(bytes, ParseOpts::default());
+    let mut p_owner = StrictParser::new(bytes, ParseOpts::default());
+    let mut p = p_owner.into_iter();
     let error = next_error(&mut p);
     assert!(
-        matches!(error.kind(), StructuralErrorKind::Syntax { .. }),
+        matches!(&error, StructuralError::Syntax { .. }),
         "{error:?}"
     );
     assert_exhausted(&mut p);

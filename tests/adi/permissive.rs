@@ -1,7 +1,7 @@
 //! Public framing-only contracts for imperfect ADI input.
 
 use qso_io::adif::DecodeError;
-use qso_io::adif::adi::parser::error::{StructuralError, StructuralErrorKind, SyntaxErrorKind};
+use qso_io::adif::adi::parser::error::{StructuralError, SyntaxErrorKind};
 use qso_io::adif::adi::parser::framing::header::PermissiveHeader;
 use qso_io::adif::adi::parser::framing::record::PermissiveRecord;
 use qso_io::adif::adi::parser::options::{LengthUnit, ParseEncoding, ParseOpts};
@@ -32,7 +32,7 @@ fn header(section: PermissiveSection<'_>) -> PermissiveHeader<'_> {
 }
 
 #[track_caller]
-fn terminal_error(parser: &mut PermissiveParser<'_>) -> StructuralError {
+fn terminal_error(parser: &mut PermissiveParser<'_>) -> StructuralError<'static> {
     let error = match parser.next() {
         Some(Err(error)) => error,
         other => panic!("expected terminal error, got {other:?}; parser: {parser:?}"),
@@ -44,13 +44,6 @@ fn terminal_error(parser: &mut PermissiveParser<'_>) -> StructuralError {
         );
     }
     error
-}
-
-fn options(encoding: ParseEncoding, field_length: LengthUnit) -> ParseOpts {
-    ParseOpts {
-        encoding,
-        field_length,
-    }
 }
 
 #[test]
@@ -121,7 +114,13 @@ fn preserves_uninterpreted_header_declarations() {
 fn retains_known_boundary_decode_failures() {
     let bytes = b"<X:2>a\xff<Y:1>b<EOR><Z:1>c<EOR>";
     for encoding in [ParseEncoding::Ascii, ParseEncoding::Utf8] {
-        let mut parser = PermissiveParser::new(bytes, options(encoding, LengthUnit::Bytes));
+        let mut parser = PermissiveParser::new(
+            bytes,
+            ParseOpts {
+                encoding,
+                field_length: LengthUnit::Bytes,
+            },
+        );
         let record = record(next_section(&mut parser));
         let field = &record.fields()[0];
         assert_eq!(field.raw_data(), b"a\xff");
@@ -154,7 +153,13 @@ fn retains_known_boundary_decode_failures() {
 #[test]
 fn retains_undecodable_header_preamble() {
     let bytes = b"\xff<EOH><X:1>a<EOR>";
-    let mut parser = PermissiveParser::new(bytes, options(ParseEncoding::Utf8, LengthUnit::Bytes));
+    let mut parser = PermissiveParser::new(
+        bytes,
+        ParseOpts {
+            encoding: ParseEncoding::Utf8,
+            field_length: LengthUnit::Bytes,
+        },
+    );
     let header = header(next_section(&mut parser));
     assert_eq!(header.raw_text(), b"\xff");
     assert_eq!(header.text_span(), 0..1);
@@ -168,14 +173,18 @@ fn retains_undecodable_header_preamble() {
 
 #[test]
 fn scalar_boundary_failures_remain_terminal() {
-    let opts = options(ParseEncoding::Utf8, LengthUnit::UnicodeScalars);
+    let opts = ParseOpts {
+        encoding: ParseEncoding::Utf8,
+        field_length: LengthUnit::UnicodeScalars,
+    };
     let mut parser = PermissiveParser::new(b"<X:2>a\xff<EOR>", opts);
     let error = terminal_error(&mut parser);
     assert_eq!(error.span(), 6..7);
     assert!(matches!(
-        error.kind(),
-        StructuralErrorKind::Decoding {
-            cause: DecodeError::Utf8(_)
+        &error,
+        StructuralError::Decoding {
+            cause: DecodeError::Utf8(_),
+            ..
         }
     ));
 
@@ -184,8 +193,8 @@ fn scalar_boundary_failures_remain_terminal() {
     let error = terminal_error(&mut parser);
     assert_eq!(error.span(), input.len()..input.len());
     assert!(matches!(
-        error.kind(),
-        StructuralErrorKind::TruncatedValue {
+        &error,
+        StructuralError::TruncatedValue {
             declared: 2,
             available: 1,
             unit: LengthUnit::UnicodeScalars,
@@ -226,14 +235,23 @@ fn preserves_encoding_and_length_boundaries() {
             "José",
         ),
     ] {
-        let mut parser = PermissiveParser::new(input, options(encoding, unit));
+        let mut parser = PermissiveParser::new(
+            input,
+            ParseOpts {
+                encoding,
+                field_length: unit,
+            },
+        );
         let record = record(next_section(&mut parser));
         assert_eq!(record.fields()[0].raw_data(), raw);
         assert_eq!(record.fields()[0].text(), Ok(text));
     }
     let mut parser = PermissiveParser::new(
         "<X:4>José<EOR>".as_bytes(),
-        options(ParseEncoding::Utf8, LengthUnit::Bytes),
+        ParseOpts {
+            encoding: ParseEncoding::Utf8,
+            field_length: LengthUnit::Bytes,
+        },
     );
     let record = record(next_section(&mut parser));
     assert_eq!(record.fields()[0].raw_data(), b"Jos\xc3");
@@ -246,29 +264,56 @@ fn preserves_encoding_and_length_boundaries() {
 #[test]
 fn reports_required_framing_failures() {
     for (bytes, reason) in [
-        (&b"H<X:1>a"[..], SyntaxErrorKind::MissingEoh),
-        (&b"<X:1>a"[..], SyntaxErrorKind::MissingEor),
-        (&b"<X:>"[..], SyntaxErrorKind::InvalidLength),
-        (&b"<X:-1>a"[..], SyntaxErrorKind::InvalidLength),
+        (
+            &b"H<X:1>a"[..],
+            (|actual: &SyntaxErrorKind| matches!(actual, SyntaxErrorKind::MissingEoh))
+                as fn(&SyntaxErrorKind) -> bool,
+        ),
+        (
+            &b"<X:1>a"[..],
+            (|actual: &SyntaxErrorKind| matches!(actual, SyntaxErrorKind::MissingEor))
+                as fn(&SyntaxErrorKind) -> bool,
+        ),
+        (
+            &b"<X:>"[..],
+            (|actual: &SyntaxErrorKind| matches!(actual, SyntaxErrorKind::InvalidLength))
+                as fn(&SyntaxErrorKind) -> bool,
+        ),
+        (
+            &b"<X:-1>a"[..],
+            (|actual: &SyntaxErrorKind| matches!(actual, SyntaxErrorKind::InvalidLength))
+                as fn(&SyntaxErrorKind) -> bool,
+        ),
         (
             &b"<X:999999999999999999999999999999999999999>"[..],
-            SyntaxErrorKind::LengthOverflow,
+            (|actual: &SyntaxErrorKind| matches!(actual, SyntaxErrorKind::LengthOverflow { .. }))
+                as fn(&SyntaxErrorKind) -> bool,
         ),
-        (&b"<\xff:0><EOR>"[..], SyntaxErrorKind::InvalidNameEncoding),
+        (
+            &b"<\xff:0><EOR>"[..],
+            (|actual: &SyntaxErrorKind| {
+                matches!(actual, SyntaxErrorKind::InvalidNameEncoding { .. })
+            }) as fn(&SyntaxErrorKind) -> bool,
+        ),
         (
             &b"<X:0:\xff><EOR>"[..],
-            SyntaxErrorKind::InvalidIndicatorEncoding,
+            (|actual: &SyntaxErrorKind| {
+                matches!(actual, SyntaxErrorKind::InvalidIndicatorEncoding { .. })
+            }) as fn(&SyntaxErrorKind) -> bool,
         ),
     ] {
         let mut parser = PermissiveParser::new(bytes, ParseOpts::default());
         let error = terminal_error(&mut parser);
         assert!(
-            matches!(error.kind(), StructuralErrorKind::Syntax { reason: actual } if *actual == reason),
+            matches!(&error, StructuralError::Syntax { reason: actual, .. } if reason(actual)),
             "input {bytes:?}: expected {reason:?}, got {error:?}"
         );
         if matches!(
-            reason,
-            SyntaxErrorKind::MissingEoh | SyntaxErrorKind::MissingEor
+            &error,
+            StructuralError::Syntax {
+                reason: SyntaxErrorKind::MissingEoh | SyntaxErrorKind::MissingEor,
+                ..
+            }
         ) {
             assert_eq!(error.span(), bytes.len()..bytes.len());
         }
@@ -280,8 +325,8 @@ fn reports_required_framing_failures() {
     assert_eq!(first.fields()[0].text(), Ok("a"));
     assert_eq!(error.span(), bytes.len()..bytes.len());
     assert!(matches!(
-        error.kind(),
-        StructuralErrorKind::TruncatedValue {
+        &error,
+        StructuralError::TruncatedValue {
             declared: 3,
             available: 2,
             unit: LengthUnit::Bytes,
@@ -322,7 +367,7 @@ fn duplicate_lookup_reports_all_occurrences() {
         .expect_err("three CALL descriptors should make lookup ambiguous");
     assert_eq!(
         error,
-        LookupError::Ambiguous {
+        LookupError {
             name: "CaLl".into(),
             descriptor_spans: vec![0..8, 15..23, 24..32]
         }
@@ -359,7 +404,7 @@ fn header_lookup_reports_all_duplicate_declarations() {
         .expect_err("three USERDEF1 descriptors should make lookup ambiguous");
     assert_eq!(
         error,
-        LookupError::Ambiguous {
+        LookupError {
             name: "USERDEF1".into(),
             descriptor_spans: vec![1..13, 20..32, 33..45]
         }

@@ -30,8 +30,15 @@ fn list_members_keep_top_level_boundaries_and_spelling() {
         ("POTA_REF", "K-4562@US-CA", vec!["K-4562@US-CA"]),
     ] {
         let bytes = document(name, text.as_bytes());
-        let field = parsed_field(&bytes, name, ParseEncoding::Ascii, LengthUnit::Bytes)
-            .unwrap_or_else(|e| panic!("{name:?} {text}: {e}"));
+        let mut owner = StrictParser::new(
+            &bytes,
+            ParseOpts {
+                encoding: ParseEncoding::Ascii,
+                field_length: LengthUnit::Bytes,
+            },
+        );
+        let field =
+            parsed_field(&mut owner, name).unwrap_or_else(|e| panic!("{name:?} {text}: {e}"));
         let Some(Value::List(items)) = field.value() else {
             panic!("expected List, got {field:?}");
         };
@@ -60,8 +67,14 @@ fn list_member_checks_obey_adif_source_coverage() {
         ("VUCC_GRIDS", "EM98,", ""),
     ] {
         let bytes = document(name, text.as_bytes());
-        let error = parsed_field(&bytes, name, ParseEncoding::Ascii, LengthUnit::Bytes)
-            .expect_err("invalid list should fail");
+        let mut owner = StrictParser::new(
+            &bytes,
+            ParseOpts {
+                encoding: ParseEncoding::Ascii,
+                field_length: LengthUnit::Bytes,
+            },
+        );
+        let error = parsed_field(&mut owner, name).expect_err("invalid list should fail");
         assert_eq!(
             &bytes[error.span()],
             bad.as_bytes(),
@@ -70,7 +83,14 @@ fn list_member_checks_obey_adif_source_coverage() {
     }
     for text in ["NZ_Regions:Hawkes Bay/Wairoa", "OTHER:Unlisted"] {
         let bytes = document("CNTY_ALT", text.as_bytes());
-        parsed_field(&bytes, "CNTY_ALT", ParseEncoding::Ascii, LengthUnit::Bytes)
+        let mut owner = StrictParser::new(
+            &bytes,
+            ParseOpts {
+                encoding: ParseEncoding::Ascii,
+                field_length: LengthUnit::Bytes,
+            },
+        );
+        parsed_field(&mut owner, "CNTY_ALT")
             .unwrap_or_else(|e| panic!("source-bounded {text}: {e}"));
     }
 }
@@ -78,14 +98,15 @@ fn list_member_checks_obey_adif_source_coverage() {
 #[test]
 fn latin1_list_members_own_their_text_safely() {
     let bytes = document("USACA_COUNTIES", b"MA,Jos\xe9:MA,Franklin");
+    let mut owner = StrictParser::new(
+        &bytes,
+        ParseOpts {
+            encoding: ParseEncoding::Latin1,
+            field_length: LengthUnit::Bytes,
+        },
+    );
     let fields = vec![
-        parsed_field(
-            &bytes,
-            "USACA_COUNTIES",
-            ParseEncoding::Latin1,
-            LengthUnit::Bytes,
-        )
-        .unwrap_or_else(|e| panic!("Latin-1 list: {e}")),
+        parsed_field(&mut owner, "USACA_COUNTIES").unwrap_or_else(|e| panic!("Latin-1 list: {e}")),
     ];
     for field in fields {
         assert_eq!(field.text(), "MA,José:MA,Franklin");

@@ -1,19 +1,18 @@
 //! Strict field representation and conversion from framed contents.
 
-use std::{borrow::Cow, ops::Range};
+use std::{borrow::Cow, collections::HashMap, ops::Range};
 
 use winnow::{
-    Result,
-    error::{ContextError, FromExternalError, StrContext},
+    error::{FromExternalError, ParserError},
     stream::{Location, Stream as _},
 };
 
 use super::super::framing::field::PermissiveField;
 use super::super::{
-    error::{self, AdiError},
+    error::{self, Result, StructuralError},
     framing,
 };
-use super::{Stream, decoding_error, definitions};
+use super::{Stream, declarations::UserDefinition, decoding_error, definitions};
 use crate::adif::value::Value;
 use crate::adif::{DataType, FieldSection};
 
@@ -24,7 +23,8 @@ pub(super) struct DataSpecifier<'a> {
     pub(super) type_indicator: Option<DataType>,
 }
 
-/// A complete length-framed field with immutable bytes and cached text decoding.
+/// A complete length-framed field with immutable bytes and cached text
+/// decoding.
 ///
 /// The field keeps name casing, raw value bytes, and decoded spelling.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -44,23 +44,27 @@ impl<'a> Field<'a> {
         &self.specifier.name
     }
 
-    /// Returns the descriptor's length in the unit selected by [`ParseOpts`](crate::adif::adi::parser::options::ParseOpts).
+    /// Returns the descriptor's length in the unit selected by
+    /// [`ParseOpts`](crate::adif::adi::parser::options::ParseOpts).
     pub fn declared_length(&self) -> usize {
         self.specifier.length
     }
 
-    /// Returns the resolved ADIF type, or None if the field has no resolved type.
+    /// Returns the resolved ADIF type, or None if the field has no resolved
+    /// type.
     ///
-    /// Standard definitions, USERDEF declarations, application-field history, or
-    /// an inline indicator can establish this type, independently of emptiness.
+    /// Standard definitions, USERDEF declarations, application-field history,
+    /// or an inline indicator can establish this type, independently of
+    /// emptiness.
     pub fn data_type(&self) -> Option<DataType> {
         self.data_type
     }
 
     /// Returns the type named by the optional inline descriptor indicator.
     ///
-    /// If the descriptor has no indicator, this method returns None. A definition
-    /// or previous application-field occurrence can still establish the type.
+    /// If the descriptor has no indicator, this method returns None. A
+    /// definition or previous application-field occurrence can still establish
+    /// the type.
     pub fn type_indicator(&self) -> Option<DataType> {
         self.specifier.type_indicator
     }
@@ -77,10 +81,11 @@ impl<'a> Field<'a> {
         self.descriptor_span.clone()
     }
 
-    /// Returns the supplied value's byte range with an exclusive end.
+    /// Returns the value's byte range in the parser's input, with an exclusive
+    /// end.
     ///
-    /// An empty value has an empty range at its actual input position, and spans
-    /// always count bytes even when the declared length counts scalars.
+    /// An empty value has an empty range at its actual input position, and
+    /// spans always count bytes even when the declared length counts scalars.
     pub fn value_span(&self) -> Range<usize> {
         self.value_span.clone()
     }
@@ -93,24 +98,28 @@ impl<'a> Field<'a> {
         }
     }
 
-    /// Borrows the stored value, or returns None for supplied zero-length contents.
+    /// Borrows the stored value, or returns None for supplied zero-length
+    /// contents.
     pub fn value(&self) -> Option<&Value<'a>> {
         self.value.as_ref()
     }
 }
 
-pub(super) fn prepared_field<'a>(
+pub(super) fn prepared_field<'a, 'header>(
     input: &mut Stream<'a>,
-) -> Result<(Field<'a>, definitions::ResolvedDefinition)> {
+    users: &HashMap<String, &'header UserDefinition<'a>>,
+) -> Result<(Field<'a>, definitions::ResolvedDefinition), StructuralError<'header>> {
     let (raw_specifier, specifier, span) = strict_descriptor(input)?;
-    let resolution =
-        definitions::resolve(&input.state, FieldSection::Record, &specifier, span.clone())
-            .map_err(|error| ContextError::from_external_error(input, error))?;
+    let resolution = definitions::resolve(
+        &input.state,
+        users,
+        FieldSection::Record,
+        &specifier,
+        span.clone(),
+    )?;
     let f = strict_frame_value(input, raw_specifier, span)?;
-    let parsed = super::values::parse(f, &resolution, input.state.parser_options.encoding)
-        .map_err(|error| ContextError::from_external_error(input, error))?;
-    definitions::check_user_constraints(&input.state, &parsed)
-        .map_err(|error| ContextError::from_external_error(input, error))?;
+    let parsed = super::values::parse(f, &resolution, input.state.parser_options.encoding)?;
+    definitions::check_user_constraints(users, &parsed, input.state.parser_options.encoding)?;
     Ok((parsed, resolution))
 }
 
@@ -121,10 +130,11 @@ pub(super) fn strict_frame_value<'a>(
 ) -> Result<PermissiveField<'a>> {
     let options = input.state.parser_options;
     let field = framing::field::frame_value(input, specifier, span, options)?;
-    if let Err(cause) = &field.text {
-        return Err(ContextError::from_external_error(
-            input,
-            decoding_error(field.raw_data, field.value_span.start, cause.clone()),
+    if let Err(cause) = field.text {
+        return Err(decoding_error(
+            field.raw_data,
+            field.value_span.start,
+            cause,
         ));
     }
     Ok(field)
@@ -146,25 +156,22 @@ pub(super) fn strict_descriptor<'a>(
             Err(cause) => {
                 input.reset(&checkpoint);
                 let _ = input.next_slice(span.start - start);
-                let mut error = ContextError::from_external_error(input, cause);
-                error.push(StrContext::Label("data type"));
+                let error = StructuralError::from_external_error(input, cause);
+
                 return Err(error);
             }
         };
         if matches!(kind, DataType::IntlString | DataType::IntlMultilineString) {
-            return Err(ContextError::from_external_error(
-                input,
-                AdiError::TypeUnavailableInAdi {
-                    data_type: kind,
-                    span: span.start..span.start + alpha_len,
-                },
-            ));
+            return Err(StructuralError::TypeUnavailableInAdi {
+                data_type: kind,
+                span: span.start..span.start + alpha_len,
+            });
         }
         if alpha_len != code.len() {
             input.reset(&checkpoint);
             let _ = input.next_slice(span.start - start + alpha_len);
-            let mut error = ContextError::new();
-            error.push(StrContext::Label("data specifier"));
+            let error = StructuralError::from_input(input);
+
             return Err(error);
         }
         Ok(())
@@ -173,24 +180,22 @@ pub(super) fn strict_descriptor<'a>(
         let end = input.current_token_start();
         (raw, start..end)
     })?;
-    let typed = strict_specifier(raw, span.clone())
-        .map_err(|error| ContextError::from_external_error(input, error))?;
+    let typed = strict_specifier(raw, span.clone())?;
     Ok((raw, typed, span))
 }
 
 pub(super) fn strict_specifier<'a>(
     raw: framing::field::Specifier<'a>,
     span: Range<usize>,
-) -> std::result::Result<DataSpecifier<'a>, AdiError> {
+) -> std::result::Result<DataSpecifier<'a>, StructuralError<'static>> {
     let type_indicator = if let Some(code) = raw.type_indicator {
         let start = span.end - 1 - code.len();
-        let kind = DataType::try_from(code).map_err(|_| AdiError::Syntax {
-            reason: error::SyntaxErrorKind::UnknownTypeIndicator,
+        let kind = DataType::try_from(code).map_err(|source| StructuralError::Syntax {
+            reason: error::SyntaxErrorKind::UnknownTypeIndicator { source },
             span: start..start + code.len().max(1),
-            cause: None,
         })?;
         if matches!(kind, DataType::IntlString | DataType::IntlMultilineString) {
-            return Err(AdiError::TypeUnavailableInAdi {
+            return Err(StructuralError::TypeUnavailableInAdi {
                 data_type: kind,
                 span: start..span.end - 1,
             });
