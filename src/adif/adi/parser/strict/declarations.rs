@@ -12,6 +12,7 @@ use super::super::{
 use super::field::{DataSpecifier, strict_specifier};
 use super::{Stream, decoding_error};
 use crate::adif::DataType;
+use crate::adif::value::UserDefinitionConstraint;
 use crate::adif::{number::parse_number, text::check_text};
 
 /// A parsed USERDEFn header declaration with its supplied spelling and bytes.
@@ -85,20 +86,6 @@ impl<'a> UserDefinition<'a> {
     pub fn value_span(&self) -> Range<usize> {
         self.value_span.clone()
     }
-}
-
-/// An enumeration or exact numeric range declared by USERDEFn.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum UserDefinitionConstraint {
-    /// Nonempty String members with their supplied spelling and order.
-    Enumeration(Vec<String>),
-    /// A range whose upper bound is strictly greater than its lower bound.
-    Range {
-        /// Exact lower bound.
-        lower: BigDecimal,
-        /// Exact upper bound.
-        upper: BigDecimal,
-    },
 }
 
 /// The part of a USERDEFn declaration that failed parsing.

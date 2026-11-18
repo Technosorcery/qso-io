@@ -22,7 +22,7 @@ fn definition<'r, 'a>(
 
 #[test]
 fn declaration_constraints_use_the_agreed_precedence() {
-    use qso_io::adif::adi::parser::strict::declarations::UserDefinitionConstraint;
+    use qso_io::adif::value::UserDefinitionConstraint;
     for (kind, expected_type) in [
         (Some('E'), Some(DataType::Enumeration)),
         (Some('N'), Some(DataType::Number)),
@@ -126,7 +126,7 @@ fn declaration_failures_have_original_component_spans() {
 
 #[test]
 fn declaration_numbers_are_positive_and_not_machine_width_limited() {
-    use qso_io::adif::adi::parser::strict::declarations::UserDefinitionConstraint;
+    use qso_io::adif::value::UserDefinitionConstraint;
     let bytes = document(
         "uSeRdEf123456789012345678901234567890",
         Some('n'),
@@ -153,7 +153,7 @@ fn declaration_numbers_are_positive_and_not_machine_width_limited() {
 
 #[test]
 fn declaration_members_follow_selected_string_rules() {
-    use qso_io::adif::adi::parser::strict::declarations::UserDefinitionConstraint;
+    use qso_io::adif::value::UserDefinitionConstraint;
     for (encoding, payload, expected) in [
         (
             ParseEncoding::Latin1,

@@ -171,7 +171,8 @@ pub(super) fn check_user_constraints<'header>(
     field: &Field<'_>,
     encoding: ParseEncoding,
 ) -> Result<(), StructuralError<'header>> {
-    use super::declarations::{UserDefinitionConstraint, UserDefinitionValueError};
+    use super::declarations::UserDefinitionValueError;
+    use crate::adif::value::UserDefinitionConstraint;
 
     if field.value().is_none() {
         return Ok(());

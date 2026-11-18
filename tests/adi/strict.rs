@@ -565,16 +565,14 @@ fn headers_distinguish_definitions_from_fields() {
     let sizes = definition(&header.entries()[3]);
     assert_eq!(
         sizes.constraint(),
-        Some(
-            &qso_io::adif::adi::parser::strict::declarations::UserDefinitionConstraint::Enumeration(
-                ["S", "M", "L"].map(str::to_owned).to_vec()
-            )
-        )
+        Some(&qso_io::adif::value::UserDefinitionConstraint::Enumeration(
+            ["S", "M", "L"].map(str::to_owned).to_vec()
+        ))
     );
     let range = definition(&header.entries()[4]);
     assert_eq!(range.data_type(), None);
     assert!(
-        matches!(range.constraint(), Some(qso_io::adif::adi::parser::strict::declarations::UserDefinitionConstraint::Range {lower,upper}) if lower == &bigdecimal::BigDecimal::from(5) && upper == &bigdecimal::BigDecimal::from(20)),
+        matches!(range.constraint(), Some(qso_io::adif::value::UserDefinitionConstraint::Range {lower,upper}) if lower == &bigdecimal::BigDecimal::from(5) && upper == &bigdecimal::BigDecimal::from(20)),
         "unexpected value: {:?}",
         range.constraint()
     );

@@ -171,3 +171,17 @@ pub enum ValueError {
     #[error("invalid Enumeration")]
     InvalidEnumeration,
 }
+
+/// An enumeration or exact numeric range declared for a user-defined ADIF field.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum UserDefinitionConstraint {
+    /// Nonempty String members with their supplied spelling and order.
+    Enumeration(Vec<String>),
+    /// A range whose upper bound is strictly greater than its lower bound.
+    Range {
+        /// Exact lower bound.
+        lower: BigDecimal,
+        /// Exact upper bound.
+        upper: BigDecimal,
+    },
+}

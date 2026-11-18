@@ -7,6 +7,7 @@ mod model;
 pub mod error;
 pub mod identity;
 pub mod permissive;
+pub mod strict;
 
 use error::{ParseError, ParseWarning};
 
