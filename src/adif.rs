@@ -20,6 +20,8 @@ pub use standard_field::{FieldSection, StandardField};
 
 /// Borrowed ADI sections, their parser, and structural diagnostics.
 pub mod adi;
+/// Borrowed ADX sections with located warnings and typed or unchecked fields.
+pub mod adx;
 mod enumerations;
 mod number;
 mod parse;
