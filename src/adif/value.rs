@@ -14,7 +14,8 @@ use thiserror::Error;
 pub enum Value<'a> {
     /// Decoded text with its supplied spelling.
     Text(Cow<'a, str>),
-    /// Top-level list members with their source order and compound member spelling.
+    /// Top-level list members with their source order and compound member
+    /// spelling.
     List(Vec<Cow<'a, str>>),
     /// The Boolean value represented by ADIF Y/y or N/n.
     Boolean(bool),
@@ -105,7 +106,8 @@ pub enum ValueError {
     /// Invalid CreditList grammar, cardinality, or applicable membership.
     #[error("invalid CreditList")]
     InvalidCreditList,
-    /// Invalid SponsoredAwardList grammar, cardinality, or applicable membership.
+    /// Invalid SponsoredAwardList grammar, cardinality, or applicable
+    /// membership.
     #[error("invalid SponsoredAwardList")]
     InvalidSponsoredAwardList,
     /// Invalid GridSquareList grammar, cardinality, or applicable membership.
@@ -114,10 +116,12 @@ pub enum ValueError {
     /// Invalid POTARefList grammar, cardinality, or applicable membership.
     #[error("invalid POTARefList")]
     InvalidPOTARefList,
-    /// Invalid SecondarySubdivisionList grammar, cardinality, or applicable membership.
+    /// Invalid SecondarySubdivisionList grammar, cardinality, or applicable
+    /// membership.
     #[error("invalid SecondarySubdivisionList")]
     InvalidSecondarySubdivisionList,
-    /// Invalid SecondaryAdministrativeSubdivisionListAlt grammar, cardinality, or applicable membership.
+    /// Invalid SecondaryAdministrativeSubdivisionListAlt grammar, cardinality,
+    /// or applicable membership.
     #[error("invalid SecondaryAdministrativeSubdivisionListAlt")]
     InvalidSecondaryAdministrativeSubdivisionListAlt,
 
@@ -172,7 +176,8 @@ pub enum ValueError {
     InvalidEnumeration,
 }
 
-/// An enumeration or exact numeric range declared for a user-defined ADIF field.
+/// An enumeration or exact numeric range declared for a user-defined ADIF
+/// field.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum UserDefinitionConstraint {
     /// Nonempty String members with their supplied spelling and order.

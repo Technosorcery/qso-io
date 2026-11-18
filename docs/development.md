@@ -12,8 +12,8 @@ cargo test --doc --locked
 RUSTDOCFLAGS="-D warnings -D missing_docs" cargo doc --no-deps --locked
 ```
 
-The minimum supported Rust version is 1.88. Verify changes with that
-toolchain:
+The current dependency tree requires Rust 1.88. CI tests that toolchain.
+Run the same checks locally:
 
 ```sh
 rustup toolchain install 1.88.0 --profile minimal
