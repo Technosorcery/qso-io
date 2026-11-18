@@ -22,6 +22,7 @@ pub use standard_field::{FieldSection, StandardField};
 pub mod adi;
 mod enumerations;
 mod number;
+mod parse;
 mod standard_field;
 mod text;
 pub mod value;

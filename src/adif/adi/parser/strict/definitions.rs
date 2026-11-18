@@ -3,11 +3,8 @@ use std::ops::Range;
 
 use super::super::options::ParseOpts;
 use super::error::AdiError;
-use super::values;
 use crate::adif::DataType;
-use crate::adif::adi::parser::error::{StructuralErrorKind, TypeAlternativeFailure};
-use crate::adif::adi::parser::framing::field::PermissiveField;
-use crate::adif::adi::parser::options::ParseEncoding;
+use crate::adif::adi::parser::error::StructuralErrorKind;
 use crate::adif::adi::parser::strict::field::{DataSpecifier, Field};
 use crate::adif::value::ValueError;
 use crate::adif::{FieldSection, StandardField};
@@ -151,75 +148,6 @@ pub(super) fn resolve(
         selection,
         application_rule,
         standard,
-    })
-}
-
-fn parse_type<'a>(
-    framed: PermissiveField<'a>,
-    kind: Option<DataType>,
-    standard: Option<StandardField>,
-    encoding: ParseEncoding,
-) -> Result<Field<'a>, AdiError> {
-    let field = values::parse(framed, kind, encoding)?;
-    if kind == Some(DataType::Enumeration)
-        && field.value().is_some()
-        && let Some(definition) = standard
-    {
-        definition
-            .check_membership(field.text())
-            .map_err(|set| AdiError::InvalidValue {
-                field_name: field.name().to_owned(),
-                span: field.value_span(),
-                cause: ValueError::InvalidEnumeration,
-                enumeration: Some(set),
-                numeric_cause: None,
-            })?;
-    }
-    Ok(field)
-}
-
-pub(super) fn parse_resolved<'a>(
-    framed: PermissiveField<'a>,
-    resolution: &ResolvedDefinition,
-    encoding: ParseEncoding,
-) -> Result<Field<'a>, AdiError> {
-    let alternatives = match resolution.selection {
-        TypeSelection::Untyped => return parse_type(framed, None, resolution.standard, encoding),
-        TypeSelection::Single(kind) => {
-            return parse_type(framed, Some(kind), resolution.standard, encoding);
-        }
-        TypeSelection::Alternatives(types) => types,
-    };
-    let mut failures = Vec::new();
-    for kind in alternatives {
-        match parse_type(framed.clone(), Some(*kind), resolution.standard, encoding) {
-            Ok(field) => return Ok(field),
-            Err(AdiError::InvalidValue {
-                span,
-                cause,
-                enumeration,
-                ..
-            }) => {
-                failures.push(TypeAlternativeFailure {
-                    data_type: *kind,
-                    span,
-                    cause,
-                    enumeration,
-                });
-            }
-            Err(error) => return Err(error),
-        }
-    }
-    let span = failures
-        .first()
-        .map_or_else(|| framed.value_span.clone(), |f| f.span.clone());
-    Err(AdiError::Defined {
-        numeric_cause: None,
-        span,
-        kind: Box::new(StructuralErrorKind::NoMatchingType {
-            field_name: framed.specifier.name.to_string(),
-            failures,
-        }),
     })
 }
 

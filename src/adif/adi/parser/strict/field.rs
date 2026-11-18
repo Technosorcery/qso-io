@@ -107,7 +107,7 @@ pub(super) fn prepared_field<'a>(
         definitions::resolve(&input.state, FieldSection::Record, &specifier, span.clone())
             .map_err(|error| ContextError::from_external_error(input, error))?;
     let f = strict_frame_value(input, raw_specifier, span)?;
-    let parsed = definitions::parse_resolved(f, &resolution, input.state.parser_options.encoding)
+    let parsed = super::values::parse(f, &resolution, input.state.parser_options.encoding)
         .map_err(|error| ContextError::from_external_error(input, error))?;
     definitions::check_user_constraints(&input.state, &parsed)
         .map_err(|error| ContextError::from_external_error(input, error))?;

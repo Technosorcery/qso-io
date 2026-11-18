@@ -976,7 +976,7 @@ fn invalid_declared_field_values_are_structural_errors() {
         (
             &b"<QSO_DATE:8:D>20260230"[..],
             ValueError::InvalidDate,
-            20..22,
+            14..22,
         ),
         (
             &b"<APP_TEST_VALUE:3:N>abc"[..],

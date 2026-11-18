@@ -162,7 +162,7 @@ pub(super) fn header_entry<'a>(input: &mut Stream<'a>) -> Result<HeaderEntry<'a>
             definitions::resolve(&input.state, FieldSection::Header, &specifier, span.clone())
                 .map_err(|error| ContextError::from_external_error(input, error))?;
         let f = strict_frame_value(input, raw_specifier, span)?;
-        definitions::parse_resolved(f, &resolution, input.state.parser_options.encoding)
+        super::values::parse(f, &resolution, input.state.parser_options.encoding)
             .map(HeaderEntry::Field)
             .map_err(|error| ContextError::from_external_error(input, error))
     }

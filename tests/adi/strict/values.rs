@@ -137,7 +137,7 @@ fn boolean_values_accept_only_y_or_n() {
 }
 
 #[test]
-fn dates_enforce_adif_years_and_calendar_components() {
+fn dates_enforce_adif_syntax_years_and_calendar_validity() {
     for text in ["19300101", "20240229", "99991231"] {
         let bytes = document(
             text.as_bytes(),
@@ -158,11 +158,13 @@ fn dates_enforce_adif_years_and_calendar_components() {
     }
     for (text, span) in [
         ("19291231", 0..4),
-        ("20241301", 4..6),
-        ("20260230", 6..8),
+        ("20241301", 0..8),
+        ("20260230", 0..8),
         ("2024010", 7..7),
         ("202401010", 8..9),
         ("2024A101", 4..5),
+        ("2024 101", 4..5),
+        ("+20240101", 0..1),
         ("20A", 2..3),
     ] {
         failure(text.as_bytes(), 'D', ValueError::InvalidDate, span);
@@ -197,14 +199,15 @@ fn times_preserve_explicit_seconds_and_reject_invalid_clock_components() {
         assert_eq!(t.time().to_string(), clock, "input {text:?}");
     }
     for (text, span) in [
-        ("2400", 0..2),
-        ("1260", 2..4),
-        ("235960", 4..6),
+        ("2400", 0..4),
+        ("1260", 0..4),
+        ("235960", 0..6),
         ("13050", 5..5),
         ("1305000", 6..7),
         ("1305.0", 4..5),
         ("1305Z", 4..5),
         ("+105", 0..1),
+        ("13 5", 2..3),
     ] {
         failure(text.as_bytes(), 'T', ValueError::InvalidTime, span);
     }

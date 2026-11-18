@@ -1,306 +1,245 @@
-use std::mem;
 use std::ops::Range;
 
-use bigdecimal::num_bigint::BigInt;
-use chrono::{NaiveDate, NaiveTime};
+use super::definitions::{ResolvedDefinition, TypeSelection};
+use crate::adif::adi::parser::error::{StructuralErrorKind, TypeAlternativeFailure};
+use crate::adif::{DataType, parse::values, value::Value};
 
 use super::super::{error::AdiError, framing::field::PermissiveField, options::ParseEncoding};
-use super::decoding_error;
-use super::field::{Field, strict_specifier};
-use crate::adif::DataType;
-use crate::adif::value::{AdifLocation, AdifTime, Hemisphere, TimePrecision, Value, ValueError};
-use crate::adif::{number::parse_number, text::check_text};
+use super::{
+    decoding_error,
+    field::{Field, strict_specifier},
+};
 
-mod identifiers;
-mod lists;
-
-#[derive(Debug, Clone)]
-pub(super) struct ValueFailure {
-    pub cause: ValueError,
-    pub enumeration: Option<&'static str>,
-    pub span: Range<usize>,
-}
-
-pub(super) fn source_range(
-    text: &str,
-    range: Range<usize>,
-    encoding: ParseEncoding,
-) -> Range<usize> {
-    if encoding == ParseEncoding::Latin1 {
-        text[..range.start].chars().count()..text[..range.end].chars().count()
+/// Maps a byte range in decoded `text` to a byte range in its encoded source.
+///
+/// The input range uses offsets within `text`; the returned range uses offsets
+/// within the encoded value. Both ranges have exclusive ends. `encoding` is the
+/// source encoding.
+fn source_range(text: &str, range: Range<usize>, encoding: ParseEncoding) -> Range<usize> {
+    if encoding != ParseEncoding::Latin1 {
+        return range;
+    }
+    // A grammar error may identify one byte within a multibyte character in
+    // decoded `text`. Include that character's source byte in the result.
+    let start = text
+        .char_indices()
+        .take_while(|(i, _)| *i < range.start)
+        .count();
+    let start = if text.is_char_boundary(range.start) {
+        start
     } else {
-        range
-    }
-}
+        start.saturating_sub(1)
+    };
 
-fn digits(bytes: &[u8], start: usize, end: usize) -> std::result::Result<u32, Range<usize>> {
-    let component = &bytes[start.min(bytes.len())..end.min(bytes.len())];
-
-    if let Some(offset) = component.iter().position(|byte| !byte.is_ascii_digit()) {
-        let index = start + offset;
-        return Err(index..index + 1);
-    }
-    if component.len() < end - start {
-        return Err(bytes.len()..bytes.len());
-    }
-
-    std::str::from_utf8(component)
-        .expect("component should be UTF-8 because every byte was checked as an ASCII digit")
-        .parse()
-        .map_err(|_| start..end)
-}
-
-fn width(bytes: &[u8], size: usize) -> std::result::Result<(), Range<usize>> {
-    if bytes.len() > size {
-        Err(size..size + 1)
-    } else if bytes.len() < size {
-        Err(bytes.len()..bytes.len())
-    } else {
-        Ok(())
-    }
+    let end = text
+        .char_indices()
+        .take_while(|(i, _)| *i < range.end)
+        .count();
+    start..end
 }
 
 pub(super) fn parse<'a>(
     f: PermissiveField<'a>,
-    resolved_type: Option<DataType>,
+    resolution: &ResolvedDefinition,
     encoding: ParseEncoding,
-) -> std::result::Result<Field<'a>, AdiError> {
+) -> Result<Field<'a>, AdiError> {
     let specifier = strict_specifier(f.specifier, f.descriptor_span.clone())?;
-    let raw = f.raw_data;
-    let fail = |cause, span: Range<usize>, numeric_cause| AdiError::InvalidValue {
-        field_name: f.specifier.name.to_string(),
-        cause,
-        span: f.value_span.start + span.start..f.value_span.start + span.end,
-        numeric_cause,
-        enumeration: None,
+    let single_kind;
+    let kinds = match resolution.selection {
+        TypeSelection::Untyped => &[][..],
+        TypeSelection::Single(kind) => {
+            single_kind = kind;
+            std::slice::from_ref(&single_kind)
+        }
+        TypeSelection::Alternatives(kinds) => kinds,
     };
-
-    let mut text = f
+    let text = f
         .text
-        .map_err(|cause| decoding_error(raw, f.value_span.start, cause))?;
-    let value = if raw.is_empty() {
-        None
-    } else {
-        Some(match resolved_type {
-            None => Value::Text(mem::take(&mut text)),
-            Some(kind @ (DataType::String | DataType::MultilineString | DataType::Enumeration)) => {
-                let reason = match kind {
-                    DataType::String => ValueError::InvalidString,
-                    DataType::MultilineString => ValueError::InvalidMultilineString,
-                    _ => ValueError::InvalidEnumeration,
-                };
-                check_text(raw, encoding, kind == DataType::MultilineString)
-                    .map_err(|span| fail(reason, span, None))?;
+        .map_err(|cause| decoding_error(f.raw_data, f.value_span.start, cause))?;
+    let check_text = |kind, text: &str| {
+        let multiline = kind == DataType::MultilineString;
+        let mut chars = text.char_indices().peekable();
 
-                Value::Text(mem::take(&mut text))
+        while let Some((i, c)) = chars.next() {
+            if multiline && c == '\r' && chars.peek().is_some_and(|(_, c)| *c == '\n') {
+                chars.next();
+                continue;
             }
-            Some(DataType::Boolean) => {
-                let value = match raw[0] {
-                    b'Y' | b'y' => true,
-                    b'N' | b'n' => false,
-                    _ => return Err(fail(ValueError::InvalidBoolean, 0..1, None)),
-                };
 
-                width(raw, 1).map_err(|span| fail(ValueError::InvalidBoolean, span, None))?;
+            let valid = match encoding {
+                ParseEncoding::Ascii => (' '..='~').contains(&c),
+                ParseEncoding::Latin1 => {
+                    (' '..='~').contains(&c) || ('\u{a0}'..='\u{ff}').contains(&c)
+                }
+                ParseEncoding::Utf8 => c != '\r' && c != '\n',
+            };
 
-                Value::Boolean(value)
+            if !valid {
+                return Err(i..i + c.len_utf8());
             }
-            Some(kind @ (DataType::Integer | DataType::PositiveInteger)) => {
-                let reason = if kind == DataType::Integer {
-                    ValueError::InvalidInteger
-                } else {
-                    ValueError::InvalidPositiveInteger
-                };
-                for (index, byte) in raw.iter().enumerate() {
-                    if !byte.is_ascii_digit()
-                        && !(kind == DataType::Integer && index == 0 && *byte == b'-')
+        }
+
+        Ok(())
+    };
+    let mut failures = Vec::new();
+
+    for &kind in kinds {
+        if matches!(
+            kind,
+            DataType::Digit
+                | DataType::Character
+                | DataType::IntlCharacter
+                | DataType::IntlString
+                | DataType::IntlMultilineString
+        ) && !f.raw_data.is_empty()
+        {
+            return Err(AdiError::TypeUnavailableInAdi {
+                data_type: kind,
+                span: f.descriptor_span,
+            });
+        }
+        if text.is_empty() {
+            return Ok(Field {
+                specifier,
+                data_type: Some(kind),
+                raw_data: f.raw_data,
+                descriptor_span: f.descriptor_span,
+                value_span: f.value_span,
+                text: None,
+                value: None,
+            });
+        }
+        let attempt = match kind {
+            kind @ (DataType::String
+            | DataType::MultilineString
+            | DataType::Enumeration
+            | DataType::IntlString
+            | DataType::IntlMultilineString
+            | DataType::GridSquare
+            | DataType::GridSquareExt
+            | DataType::IOTARefNo
+            | DataType::POTARef
+            | DataType::SOTARef
+            | DataType::WWFFRef) => {
+                let checked = match kind {
+                    DataType::String
+                    | DataType::MultilineString
+                    | DataType::Enumeration
+                    | DataType::IntlString
+                    | DataType::IntlMultilineString => {
+                        values::check_string(kind, &text, check_text)
+                    }
+                    _ => values::identifiers::check(kind, &text, &check_text),
+                }
+                .and_then(|()| {
+                    if kind == DataType::Enumeration
+                        && let Some(standard) = resolution.standard
                     {
-                        return Err(fail(reason, index..index + 1, None));
+                        standard
+                            .check_membership(&text)
+                            .map_err(|set| values::ValueFailure {
+                                cause: crate::adif::value::ValueError::InvalidEnumeration,
+                                enumeration: Some(set),
+                                span: 0..text.len(),
+                                numeric_cause: None,
+                            })?;
                     }
-                }
-                if raw == b"-" {
-                    return Err(fail(reason, raw.len()..raw.len(), None));
-                }
-                let spelling = str::from_utf8(raw).expect("integer should be UTF-8 because all bytes were checked as ASCII digits or an initial minus");
-                let integer: BigInt = spelling.parse().map_err(|cause| {
-                    fail(
-                        reason,
-                        0..raw.len(),
-                        Some(crate::adif::number::NumericCause::Integer(cause)),
-                    )
-                })?;
-                if kind == DataType::PositiveInteger && integer <= BigInt::default() {
-                    return Err(fail(reason, 0..raw.len(), None));
-                }
-                Value::Integer(integer)
-            }
-            Some(
-                kind @ (DataType::GridSquare
-                | DataType::GridSquareExt
-                | DataType::IOTARefNo
-                | DataType::POTARef
-                | DataType::SOTARef
-                | DataType::WWFFRef),
-            ) => {
-                identifiers::check(kind, &text, raw, encoding).map_err(|error| {
-                    AdiError::InvalidValue {
-                        field_name: f.specifier.name.to_string(),
-                        cause: error.cause,
-                        span: f.value_span.start + error.span.start
-                            ..f.value_span.start + error.span.end,
-                        numeric_cause: None,
-                        enumeration: error.enumeration,
+                    Ok(())
+                });
+                match checked {
+                    Ok(()) => {
+                        return Ok(Field {
+                            specifier,
+                            data_type: Some(kind),
+                            raw_data: f.raw_data,
+                            descriptor_span: f.descriptor_span,
+                            value_span: f.value_span,
+                            text: None,
+                            value: Some(Value::Text(text)),
+                        });
                     }
-                })?;
-                Value::Text(mem::take(&mut text))
+                    Err(error) => Err(error),
+                }
             }
-            Some(
-                kind @ (DataType::AwardList
-                | DataType::CreditList
-                | DataType::SponsoredAwardList
-                | DataType::GridSquareList
-                | DataType::POTARefList
-                | DataType::SecondarySubdivisionList
-                | DataType::SecondaryAdministrativeSubdivisionListAlt),
-            ) => {
-                let (members, whole) = lists::parse(kind, mem::take(&mut text), raw, encoding)
-                    .map_err(|error| AdiError::InvalidValue {
-                        field_name: f.specifier.name.to_string(),
-                        cause: error.cause,
-                        span: f.value_span.start + error.span.start
-                            ..f.value_span.start + error.span.end,
-                        numeric_cause: None,
-                        enumeration: error.enumeration,
-                    })?;
-                text = whole;
-                Value::List(members)
+            DataType::Boolean => values::boolean(&text).map(Value::Boolean),
+            DataType::Integer => values::integer(&text, false).map(Value::Integer),
+            DataType::PositiveInteger => values::integer(&text, true).map(Value::Integer),
+            DataType::Number => values::number(&text).map(Value::Number),
+            DataType::Date => values::date(&text).map(Value::Date),
+            DataType::Time => values::time(&text).map(Value::Time),
+            DataType::Location => values::location(&text).map(Value::Location),
+            kind @ (DataType::AwardList
+            | DataType::CreditList
+            | DataType::SponsoredAwardList
+            | DataType::GridSquareList
+            | DataType::POTARefList
+            | DataType::SecondarySubdivisionList
+            | DataType::SecondaryAdministrativeSubdivisionListAlt) => {
+                values::lists::parse(kind, &text, &check_text).map(Value::List)
             }
-            Some(DataType::Number) => {
-                Value::Number(parse_number(raw).map_err(|e| {
-                    fail(ValueError::InvalidNumber, e.span, e.cause.map(Into::into))
-                })?)
-            }
-            Some(DataType::Date) => {
-                let reason = ValueError::InvalidDate;
-
-                let year = digits(raw, 0, 4).map_err(|span| fail(reason, span, None))?;
-                let month = digits(raw, 4, 6).map_err(|span| fail(reason, span, None))?;
-                let day = digits(raw, 6, 8).map_err(|span| fail(reason, span, None))?;
-                width(raw, 8).map_err(|span| fail(reason, span, None))?;
-
-                if year < 1930 {
-                    return Err(fail(reason, 0..4, None));
-                }
-                if !(1..=12).contains(&month) {
-                    return Err(fail(reason, 4..6, None));
-                }
-
-                let date = NaiveDate::from_ymd_opt(year as i32, month, day)
-                    .ok_or_else(|| fail(reason, 6..8, None))?;
-                Value::Date(date)
-            }
-            Some(DataType::Time) => {
-                let reason = ValueError::InvalidTime;
-                let size = if raw.len() <= 4 { 4 } else { 6 };
-
-                let hour = digits(raw, 0, 2).map_err(|span| fail(reason, span, None))?;
-                let minute = digits(raw, 2, 4).map_err(|span| fail(reason, span, None))?;
-                let second = if size == 6 {
-                    digits(raw, 4, 6).map_err(|span| fail(reason, span, None))?
-                } else {
-                    0
-                };
-
-                width(raw, size).map_err(|span| fail(reason, span, None))?;
-
-                if hour > 23 {
-                    return Err(fail(reason, 0..2, None));
-                }
-                if minute > 59 {
-                    return Err(fail(reason, 2..4, None));
-                }
-                if second > 59 {
-                    return Err(fail(reason, 4..6, None));
-                }
-
-                Value::Time(AdifTime {
-                    time: NaiveTime::from_hms_opt(hour, minute, second).expect("time should be valid because hour, minute, and second ranges were checked locally"),
-                    precision: if size == 4 {
-                        TimePrecision::Minute
-                    } else {
-                        TimePrecision::Second
-                    },
-                })
-            }
-            Some(DataType::Location) => {
-                let reason = ValueError::InvalidLocation;
-
-                let hemisphere = match raw[0] {
-                    b'N' => Hemisphere::North,
-                    b'S' => Hemisphere::South,
-                    b'E' => Hemisphere::East,
-                    b'W' => Hemisphere::West,
-                    _ => return Err(fail(reason, 0..1, None)),
-                };
-
-                let degrees = digits(raw, 1, 4).map_err(|span| fail(reason, span, None))?;
-                if raw.get(4) != Some(&b' ') {
-                    return Err(fail(reason, 4.min(raw.len())..5.min(raw.len()), None));
-                }
-
-                let minutes = digits(raw, 5, 7).map_err(|span| fail(reason, span, None))?;
-                if raw.get(7) != Some(&b'.') {
-                    return Err(fail(reason, 7.min(raw.len())..8.min(raw.len()), None));
-                }
-
-                digits(raw, 8, 11).map_err(|span| fail(reason, span, None))?;
-                width(raw, 11).map_err(|span| fail(reason, span, None))?;
-
-                if degrees > 180 {
-                    return Err(fail(reason, 1..4, None));
-                }
-                if minutes > 59 {
-                    return Err(fail(reason, 5..11, None));
-                }
-
-                let minutes = parse_number(&raw[5..11]).map_err(|e| {
-                    fail(
-                        reason,
-                        5 + e.span.start..5 + e.span.end,
-                        e.cause.map(Into::into),
-                    )
-                })?;
-
-                Value::Location(AdifLocation {
-                    hemisphere,
-                    degrees: degrees as u16,
-                    minutes,
-                })
-            }
-            // The parser rejects ADX-only types before framing. Constituent
-            // character categories have no standalone ADI field conversion.
-            Some(kind) => {
+            DataType::Digit | DataType::Character | DataType::IntlCharacter => {
                 return Err(AdiError::TypeUnavailableInAdi {
                     data_type: kind,
-                    span: f.descriptor_span.clone(),
+                    span: f.descriptor_span,
                 });
             }
-        })
-    };
-
-    let text = if matches!(&value, None | Some(Value::Text(_))) {
+        };
+        match attempt {
+            Ok(value) => {
+                return Ok(Field {
+                    specifier,
+                    data_type: Some(kind),
+                    raw_data: f.raw_data,
+                    descriptor_span: f.descriptor_span,
+                    value_span: f.value_span,
+                    text: Some(text),
+                    value: Some(value),
+                });
+            }
+            Err(error) => {
+                let span = source_range(&text, error.span, encoding);
+                let span = f.value_span.start + span.start..f.value_span.start + span.end;
+                if !matches!(resolution.selection, TypeSelection::Alternatives(_)) {
+                    return Err(AdiError::InvalidValue {
+                        field_name: specifier.name.into_owned(),
+                        cause: error.cause,
+                        span,
+                        numeric_cause: error.numeric_cause,
+                        enumeration: error.enumeration,
+                    });
+                }
+                failures.push(TypeAlternativeFailure {
+                    data_type: kind,
+                    span,
+                    cause: error.cause,
+                    enumeration: error.enumeration,
+                });
+            }
+        }
+    }
+    if let Some(first) = failures.first() {
+        return Err(AdiError::Defined {
+            span: first.span.clone(),
+            numeric_cause: None,
+            kind: Box::new(StructuralErrorKind::NoMatchingType {
+                field_name: specifier.name.into_owned(),
+                failures,
+            }),
+        });
+    }
+    // No resolved types: retain unchecked text directly.
+    let value = if text.is_empty() {
         None
     } else {
-        Some(text)
+        Some(Value::Text(text))
     };
-
     Ok(Field {
         specifier,
-        data_type: resolved_type,
-        raw_data: raw,
+        data_type: None,
+        raw_data: f.raw_data,
         descriptor_span: f.descriptor_span,
         value_span: f.value_span,
-        text,
+        text: None,
         value,
     })
 }
