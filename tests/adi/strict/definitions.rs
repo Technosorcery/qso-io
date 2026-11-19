@@ -3,11 +3,14 @@ use qso_io::adif::value::Value;
 
 #[test]
 fn standard_fields_resolve_without_inline_indicators() {
-    let file = parse_file(
+    let mut owner = StrictParser::new(
         b"P<PROGRAMID:1>X<EOH><FREQ:6>14.074<MY_CQ_ZONE:2>41<EOR>",
-        ParseEncoding::Ascii,
-        LengthUnit::Bytes,
+        ParseOpts {
+            encoding: ParseEncoding::Ascii,
+            field_length: LengthUnit::Bytes,
+        },
     );
+    let file = parse_file(&mut owner);
     let header = file.header.expect("preamble should produce a header");
     assert_eq!(
         header
@@ -39,16 +42,17 @@ fn standard_indicators_and_adi_eligibility_apply_to_empty_values() {
         (&b"<MY_CQ_ZONE:0:N><EOR>"[..], DataType::PositiveInteger),
         (&b"<NAME_INTL:0><EOR>"[..], DataType::IntlString),
     ] {
-        let mut parser = StrictParser::new(bytes, ParseOpts::default());
+        let mut parser_owner = StrictParser::new(bytes, ParseOpts::default());
+        let mut parser = parser_owner.into_iter();
         let error = next_error(&mut parser);
         if kind == DataType::PositiveInteger {
             assert!(
-                matches!(error.kind(), error::StructuralErrorKind::TypeConflict { expected, supplied: DataType::Number, definition_span: None, .. } if expected == &[kind]),
+                matches!(&error, error::StructuralError::StandardTypeConflict { expected, supplied: DataType::Number, .. } if expected == &[kind]),
                 "{error:?}"
             );
         } else {
             assert!(
-                matches!(error.kind(), error::StructuralErrorKind::TypeUnavailableInAdi {data_type} if *data_type==kind),
+                matches!(&error, error::StructuralError::TypeUnavailableInAdi {data_type, .. } if *data_type==kind),
                 "{error:?}"
             );
         }
@@ -61,7 +65,8 @@ fn standard_indicators_and_adi_eligibility_apply_to_empty_values() {
         );
         assert_exhausted(&mut parser);
     }
-    let mut parser = StrictParser::new(b"<MY_CQ_ZONE:4>14.5<EOR>", ParseOpts::default());
+    let mut parser_owner = StrictParser::new(b"<MY_CQ_ZONE:4>14.5<EOR>", ParseOpts::default());
+    let mut parser = parser_owner.into_iter();
     let error = next_error(&mut parser);
     assert_eq!(error.span(), 16..17);
 }
@@ -69,7 +74,14 @@ fn standard_indicators_and_adi_eligibility_apply_to_empty_values() {
 #[test]
 fn standard_membership_uses_ascii_identity_without_date_relationships() {
     let bytes = b"<MODE:3>ssb<ARRL_SECT:3>GTA<QSO_DATE:8>20250101<DARC_DOK:11>NOT-A-DOK-X<EOR>";
-    let file = parse_file(bytes, ParseEncoding::Ascii, LengthUnit::Bytes);
+    let mut owner = StrictParser::new(
+        bytes,
+        ParseOpts {
+            encoding: ParseEncoding::Ascii,
+            field_length: LengthUnit::Bytes,
+        },
+    );
+    let file = parse_file(&mut owner);
     assert_eq!(named(&file.records[0], "MODE").text(), "ssb");
     assert_eq!(
         named(&file.records[0], "DARC_DOK").data_type(),
@@ -77,18 +89,19 @@ fn standard_membership_uses_ascii_identity_without_date_relationships() {
     );
     for raw in ["ſſb", " SSB", "SSB "] {
         let bytes = format!("<MODE:{}>{raw}<EOR>", raw.len());
-        let mut parser = StrictParser::new(
+        let mut parser_owner = StrictParser::new(
             bytes.as_bytes(),
             ParseOpts {
                 encoding: ParseEncoding::Utf8,
                 field_length: LengthUnit::Bytes,
             },
         );
+        let mut parser = parser_owner.into_iter();
         let error = next_error(&mut parser);
         assert!(
             matches!(
-                error.kind(),
-                error::StructuralErrorKind::InvalidValue {
+                &error,
+                error::StructuralError::InvalidValue {
                     enumeration: Some("Mode"),
                     ..
                 }
@@ -106,32 +119,65 @@ fn standard_alternatives_prefer_credit_and_retain_both_failures() {
         ("AJA", DataType::AwardList),
     ] {
         let bytes = format!("<CREDIT_GRANTED:{}>{value}<EOR>", value.len());
-        let file = parse_file(bytes.as_bytes(), ParseEncoding::Ascii, LengthUnit::Bytes);
-        assert_eq!(
-            named(&file.records[0], "CREDIT_GRANTED").data_type(),
-            Some(kind)
+        let mut owner = StrictParser::new(
+            bytes.as_bytes(),
+            ParseOpts {
+                encoding: ParseEncoding::Ascii,
+                field_length: LengthUnit::Bytes,
+            },
         );
+        let file = parse_file(&mut owner);
+        let field = named(&file.records[0], "CREDIT_GRANTED");
+        assert_eq!(field.data_type(), Some(kind));
+        assert_eq!(field.text(), value);
+        assert_eq!(field.raw_data(), value.as_bytes());
     }
-    let bytes = b"<CREDIT_GRANTED:8>AJA,NOPE<EOR>";
-    let mut parser = StrictParser::new(bytes, ParseOpts::default());
-    let error = next_error(&mut parser);
-    let error::StructuralErrorKind::NoMatchingType { failures, .. } = error.kind() else {
-        panic!("expected alternatives, got {error:?}");
-    };
-    assert_eq!(failures.len(), 2);
-    assert_eq!(failures[0].data_type(), DataType::CreditList);
-    assert_eq!(failures[1].data_type(), DataType::AwardList);
-    assert_eq!(&bytes[failures[0].span()], b"AJA");
-    assert_eq!(&bytes[failures[1].span()], b"NOPE");
-    assert_eq!(error.span(), failures[0].span());
-    assert_exhausted(&mut parser);
+    for (bytes, encoding, invalid_member) in [
+        (
+            b"<CREDIT_GRANTED:8>AJA,NOPE<EOR>".as_slice(),
+            ParseEncoding::Ascii,
+            b"NOPE".as_slice(),
+        ),
+        (
+            b"<CREDIT_GRANTED:8>AJA,N\xd3PE<EOR>".as_slice(),
+            ParseEncoding::Latin1,
+            b"N\xd3PE".as_slice(),
+        ),
+    ] {
+        let mut parser_owner = StrictParser::new(
+            bytes,
+            ParseOpts {
+                encoding,
+                field_length: LengthUnit::Bytes,
+            },
+        );
+        let mut parser = parser_owner.into_iter();
+        let error = next_error(&mut parser);
+        let error::StructuralError::NoMatchingType { failures, .. } = &error else {
+            panic!("expected alternatives, got {error:?}");
+        };
+        assert_eq!(failures.len(), 2);
+        assert_eq!(failures[0].data_type(), DataType::CreditList);
+        assert_eq!(failures[1].data_type(), DataType::AwardList);
+        assert_eq!(&bytes[failures[0].span()], b"AJA");
+        assert_eq!(&bytes[failures[1].span()], invalid_member);
+        assert_eq!(error.span(), failures[0].span());
+        assert_exhausted(&mut parser);
+    }
 }
 
 #[test]
 fn standard_catalog_is_not_selected_by_adif_ver() {
     for version in ["2.0.0", "9.9.9"] {
         let bytes = format!("P<ADIF_VER:5>{version}<EOH><FREQ:1>1<X_NEW:3>123<EOR>");
-        let file = parse_file(bytes.as_bytes(), ParseEncoding::Ascii, LengthUnit::Bytes);
+        let mut owner = StrictParser::new(
+            bytes.as_bytes(),
+            ParseOpts {
+                encoding: ParseEncoding::Ascii,
+                field_length: LengthUnit::Bytes,
+            },
+        );
+        let file = parse_file(&mut owner);
         assert_eq!(
             named(&file.records[0], "FREQ").data_type(),
             Some(DataType::Number)
@@ -152,10 +198,11 @@ fn secondary_subdivision_failures_preserve_field_diagnostics() {
         "1234567",
     ] {
         let bytes = format!("<CNTY:{}>{code}<EOR><CALL:1>X<EOR>", code.len());
-        let mut parser = StrictParser::new(bytes.as_bytes(), ParseOpts::default());
+        let mut parser_owner = StrictParser::new(bytes.as_bytes(), ParseOpts::default());
+        let mut parser = parser_owner.into_iter();
         let error = next_error(&mut parser);
         assert!(
-            matches!(error.kind(), error::StructuralErrorKind::InvalidValue {
+            matches!(&error, error::StructuralError::InvalidValue {
                 field_name, cause: qso_io::adif::value::ValueError::InvalidEnumeration,
                 enumeration: Some("Secondary_Administrative_Subdivision"), ..
             } if field_name == "CNTY"),
@@ -189,7 +236,14 @@ fn secondary_subdivisions_preserve_text_without_dxcc_inference() {
                 code.len(),
                 code.len()
             );
-            let file = parse_file(bytes.as_bytes(), ParseEncoding::Ascii, LengthUnit::Bytes);
+            let mut owner = StrictParser::new(
+                bytes.as_bytes(),
+                ParseOpts {
+                    encoding: ParseEncoding::Ascii,
+                    field_length: LengthUnit::Bytes,
+                },
+            );
+            let file = parse_file(&mut owner);
             for name in ["CNTY", "MY_CNTY"] {
                 let field = named(&file.records[0], name);
                 assert_eq!(field.text(), code, "{bytes}");
@@ -243,16 +297,17 @@ fn nested_subdivision_errors_preserve_encoded_list_member_spans() {
                 let value_start = bytes.len();
                 bytes.extend_from_slice(&value);
                 bytes.extend_from_slice(b"<EOR><CALL:1>X<EOR>");
-                let mut parser = StrictParser::new(
+                let mut parser_owner = StrictParser::new(
                     &bytes,
                     ParseOpts {
                         encoding,
                         field_length: unit,
                     },
                 );
+                let mut parser = parser_owner.into_iter();
                 let error = next_error(&mut parser);
                 assert!(
-                    matches!(error.kind(), error::StructuralErrorKind::InvalidValue {
+                    matches!(&error, error::StructuralError::InvalidValue {
                     field_name, enumeration: Some(set), ..
                 } if field_name == name && *set == enumeration),
                     "{encoding:?}/{unit:?} {name}: {error:?}"

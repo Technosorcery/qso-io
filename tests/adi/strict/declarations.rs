@@ -22,14 +22,21 @@ fn definition<'r, 'a>(
 
 #[test]
 fn declaration_constraints_use_the_agreed_precedence() {
-    use qso_io::adif::adi::parser::strict::declarations::UserDefinitionConstraint;
+    use qso_io::adif::value::UserDefinitionConstraint;
     for (kind, expected_type) in [
         (Some('E'), Some(DataType::Enumeration)),
         (Some('N'), Some(DataType::Number)),
         (None, None),
     ] {
         let bytes = document("USERDEF1", kind, b"X,{5:20}");
-        let file = parse_file(&bytes, ParseEncoding::Ascii, LengthUnit::Bytes);
+        let mut owner = StrictParser::new(
+            &bytes,
+            ParseOpts {
+                encoding: ParseEncoding::Ascii,
+                field_length: LengthUnit::Bytes,
+            },
+        );
+        let file = parse_file(&mut owner);
         let header = file
             .header
             .expect("input should yield a header because it starts with a preamble");
@@ -51,7 +58,14 @@ fn declaration_constraints_use_the_agreed_precedence() {
         }
     }
     let bytes = document("USERDEF1", Some('E'), b"X,{A:B,C}");
-    let h = parse_file(&bytes, ParseEncoding::Ascii, LengthUnit::Bytes)
+    let mut owner = StrictParser::new(
+        &bytes,
+        ParseOpts {
+            encoding: ParseEncoding::Ascii,
+            field_length: LengthUnit::Bytes,
+        },
+    );
+    let h = parse_file(&mut owner)
         .header
         .expect("input should yield a header because it starts with a preamble");
     let def = definition(&h.entries()[0]);
@@ -84,7 +98,7 @@ fn declaration_failures_have_original_component_spans() {
         ),
         (
             document("USERDEF1", None, b"X,{abc:20}"),
-            UserDefinitionError::InvalidRangeBound,
+            UserDefinitionError::InvalidRangeBound { source: None },
             17..18,
         ),
         (
@@ -98,11 +112,12 @@ fn declaration_failures_have_original_component_spans() {
             19..19,
         ),
     ] {
-        let mut parser = StrictParser::new(&bytes, ParseOpts::default());
+        let mut parser_owner = StrictParser::new(&bytes, ParseOpts::default());
+        let mut parser = parser_owner.into_iter();
         let error = next_error(&mut parser);
         assert_eq!(error.span(), span, "{bytes:?}: {error}");
         assert!(
-            matches!(error.kind(),error::StructuralErrorKind::InvalidUserDefinition {cause:actual,..} if actual==&cause),
+            matches!(&error,error::StructuralError::InvalidUserDefinition {cause:actual,..} if actual==&cause),
             "input {bytes:?}: expected {cause:?}, got {error:?}"
         );
         assert_exhausted(&mut parser);
@@ -111,13 +126,20 @@ fn declaration_failures_have_original_component_spans() {
 
 #[test]
 fn declaration_numbers_are_positive_and_not_machine_width_limited() {
-    use qso_io::adif::adi::parser::strict::declarations::UserDefinitionConstraint;
+    use qso_io::adif::value::UserDefinitionConstraint;
     let bytes = document(
         "uSeRdEf123456789012345678901234567890",
         Some('n'),
         b"X,{-.5:1.}",
     );
-    let header = parse_file(&bytes, ParseEncoding::Ascii, LengthUnit::Bytes)
+    let mut owner = StrictParser::new(
+        &bytes,
+        ParseOpts {
+            encoding: ParseEncoding::Ascii,
+            field_length: LengthUnit::Bytes,
+        },
+    );
+    let header = parse_file(&mut owner)
         .header
         .expect("input should yield a header because it starts with a preamble");
     let def = definition(&header.entries()[0]);
@@ -131,7 +153,7 @@ fn declaration_numbers_are_positive_and_not_machine_width_limited() {
 
 #[test]
 fn declaration_members_follow_selected_string_rules() {
-    use qso_io::adif::adi::parser::strict::declarations::UserDefinitionConstraint;
+    use qso_io::adif::value::UserDefinitionConstraint;
     for (encoding, payload, expected) in [
         (
             ParseEncoding::Latin1,
@@ -145,7 +167,14 @@ fn declaration_members_follow_selected_string_rules() {
         ),
     ] {
         let bytes = document("USERDEF1", Some('E'), payload);
-        let header = parse_file(&bytes, encoding, LengthUnit::Bytes)
+        let mut owner = StrictParser::new(
+            &bytes,
+            ParseOpts {
+                encoding,
+                field_length: LengthUnit::Bytes,
+            },
+        );
+        let header = parse_file(&mut owner)
             .header
             .expect("input should yield a header because it starts with a preamble");
         let def = definition(&header.entries()[0]);
@@ -158,13 +187,14 @@ fn declaration_members_follow_selected_string_rules() {
         );
     }
     let bytes = b"P<PROGRAMID:1>A<USERDEF1:8:E>X\xe9,{A,\x85}<EOH>";
-    let mut parser = StrictParser::new(
+    let mut parser_owner = StrictParser::new(
         bytes,
         ParseOpts {
             encoding: ParseEncoding::Latin1,
             field_length: LengthUnit::Bytes,
         },
     );
+    let mut parser = parser_owner.into_iter();
     assert_eq!(next_error(&mut parser).span(), 35..36);
 }
 
@@ -182,7 +212,8 @@ fn adx_only_indicators_are_terminal_even_on_empty_fields() {
             let position = bytes.len() - 2;
             bytes.extend_from_slice(payload);
             bytes.extend_from_slice(if header { b"<EOH>" } else { b"<EOR>" });
-            let mut parser = StrictParser::new(&bytes, ParseOpts::default());
+            let mut parser_owner = StrictParser::new(&bytes, ParseOpts::default());
+            let mut parser = parser_owner.into_iter();
             let error = next_error(&mut parser);
             assert_eq!(
                 error.span(),
@@ -190,10 +221,7 @@ fn adx_only_indicators_are_terminal_even_on_empty_fields() {
                 "indicator {indicator}, name {name}, payload {payload:?}: {error:?}"
             );
             assert!(
-                matches!(
-                    error.kind(),
-                    error::StructuralErrorKind::TypeUnavailableInAdi { .. }
-                ),
+                matches!(&error, error::StructuralError::TypeUnavailableInAdi { .. }),
                 "indicator {indicator}, name {name}, payload {payload:?}: expected ADI-ineligible type error, got {error:?}"
             );
             assert_exhausted(&mut parser);
@@ -204,18 +232,26 @@ fn adx_only_indicators_are_terminal_even_on_empty_fields() {
 #[test]
 fn declaration_uniqueness_uses_original_descriptor_names() {
     let bytes = b"P<USERDEF1:1:N>X<USERDEF01:1:N>Y<EOH>";
-    let header = parse_file(bytes, ParseEncoding::Ascii, LengthUnit::Bytes)
+    let mut owner = StrictParser::new(
+        bytes,
+        ParseOpts {
+            encoding: ParseEncoding::Ascii,
+            field_length: LengthUnit::Bytes,
+        },
+    );
+    let header = parse_file(&mut owner)
         .header
         .expect("input should yield a header because it starts with a preamble");
     assert_eq!(header.entries().len(), 2);
     let bytes = b"P<USERDEF1:1:N>X<userdef1:1:N>X<EOH>";
-    let mut parser = StrictParser::new(bytes, ParseOpts::default());
+    let mut parser_owner = StrictParser::new(bytes, ParseOpts::default());
+    let mut parser = parser_owner.into_iter();
     let error = next_error(&mut parser);
-    let error::StructuralErrorKind::DuplicateField {
+    let error::StructuralError::DuplicateField {
         first_span,
         second_span,
         ..
-    } = error.kind()
+    } = &error
     else {
         panic!("{error:?}")
     };
@@ -227,12 +263,13 @@ fn declaration_uniqueness_uses_original_descriptor_names() {
 fn userdef_enumeration_members_are_nonempty() {
     for payload in [b"X,{}".as_slice(), b"X,{,A}", b"X,{A,}", b"X,{A,,B}"] {
         let bytes = document("USERDEF1", Some('E'), payload);
-        let mut parser = StrictParser::new(&bytes, ParseOpts::default());
+        let mut parser_owner = StrictParser::new(&bytes, ParseOpts::default());
+        let mut parser = parser_owner.into_iter();
         let error = next_error(&mut parser);
         assert!(
             matches!(
-                error.kind(),
-                error::StructuralErrorKind::InvalidUserDefinition {
+                &error,
+                error::StructuralError::InvalidUserDefinition {
                     cause: qso_io::adif::adi::parser::strict::declarations::UserDefinitionError::InvalidEnumeration,
                     ..
                 }
@@ -246,19 +283,27 @@ fn userdef_enumeration_members_are_nonempty() {
         assert_exhausted(&mut parser);
     }
     let bytes = document("USERDEF1", Some('E'), b"X,{ }");
-    parse_file(&bytes, ParseEncoding::Ascii, LengthUnit::Bytes);
+    let mut owner = StrictParser::new(
+        &bytes,
+        ParseOpts {
+            encoding: ParseEncoding::Ascii,
+            field_length: LengthUnit::Bytes,
+        },
+    );
+    parse_file(&mut owner);
 }
 
 #[test]
 fn userdef_collisions_fail_when_the_declaration_is_added() {
     let bytes = b"P<USERDEF1:5:N>SCORE<USERDEF2:5:N>score<BROKEN";
-    let mut parser = StrictParser::new(bytes, ParseOpts::default());
+    let mut parser_owner = StrictParser::new(bytes, ParseOpts::default());
+    let mut parser = parser_owner.into_iter();
     let error = next_error(&mut parser);
-    let error::StructuralErrorKind::DuplicateUserDefinition {
+    let error::StructuralError::DuplicateUserDefinition {
         first_span,
         second_span,
         ..
-    } = error.kind()
+    } = &error
     else {
         panic!("expected duplicate target before BROKEN, got {error:?}");
     };
@@ -269,12 +314,13 @@ fn userdef_collisions_fail_when_the_declaration_is_added() {
 
     for target in ["FREQ", "userdef0001"] {
         let bytes = document("USERDEF1", Some('N'), target.as_bytes());
-        let mut parser = StrictParser::new(&bytes, ParseOpts::default());
+        let mut parser_owner = StrictParser::new(&bytes, ParseOpts::default());
+        let mut parser = parser_owner.into_iter();
         let error = next_error(&mut parser);
         assert!(
             matches!(
-                error.kind(),
-                error::StructuralErrorKind::InvalidUserDefinition {
+                &error,
+                error::StructuralError::InvalidUserDefinition {
                     cause: qso_io::adif::adi::parser::strict::declarations::UserDefinitionError::StandardFieldName,
                     ..
                 }
@@ -290,7 +336,14 @@ fn userdef_collisions_fail_when_the_declaration_is_added() {
     }
 
     let bytes = document("USERDEF1", Some('N'), b"USERDEF000");
-    let header = parse_file(&bytes, ParseEncoding::Ascii, LengthUnit::Bytes)
+    let mut owner = StrictParser::new(
+        &bytes,
+        ParseOpts {
+            encoding: ParseEncoding::Ascii,
+            field_length: LengthUnit::Bytes,
+        },
+    );
+    let header = parse_file(&mut owner)
         .header
         .expect("zero-number target should be allowed in a complete USERDEF header");
     let entry = header
@@ -301,11 +354,14 @@ fn userdef_collisions_fail_when_the_declaration_is_added() {
 }
 
 #[test]
-fn userdef_types_and_ranges_survive_dropping_the_header() {
+fn header_and_records_remain_usable_with_borrowed_terminal_bounds() {
     let bytes = b"P<USERDEF1:5:N>SCORE<USERDEF2:11>SIZE,{5:20}<EOH><SCORE:3>123<SIZE:1>5<EOR><SIZE:2>20<EOR><SIZE:2>21<EOR>";
     let mut parser = StrictParser::new(bytes, ParseOpts::default());
-    drop(next_section(&mut parser));
-    let section = next_section(&mut parser);
+    let mut sections = parser.into_iter();
+    let Section::Header(header) = next_section(&mut sections) else {
+        panic!("expected complete header");
+    };
+    let section = next_section(&mut sections);
     let Section::Record(record) = section else {
         panic!("expected first record, got {section:?}");
     };
@@ -317,9 +373,9 @@ fn userdef_types_and_ranges_survive_dropping_the_header() {
     assert!(
         matches!(named(&record, "SIZE").value(), Some(qso_io::adif::value::Value::Text(t)) if t=="5")
     );
-    let _ = next_section(&mut parser);
-    let error = next_error(&mut parser);
-    let error::StructuralErrorKind::UserDefinitionConstraintViolation {
+    let _ = next_section(&mut sections);
+    let error = next_error(&mut sections);
+    let error::StructuralError::UserDefinitionConstraintViolation {
         constraint_span,
         cause:
             qso_io::adif::adi::parser::strict::declarations::UserDefinitionValueError::OutOfRange {
@@ -327,33 +383,46 @@ fn userdef_types_and_ranges_survive_dropping_the_header() {
                 upper,
             },
         ..
-    } = error.kind()
+    } = &error
     else {
         panic!("expected range violation, got {error:?}");
     };
     assert_eq!(&bytes[error.span()], b"21");
     assert_eq!(&bytes[constraint_span.clone()], b"{5:20}");
-    assert_eq!(lower, &bigdecimal::BigDecimal::from(5));
-    assert_eq!(upper, &bigdecimal::BigDecimal::from(20));
-    assert_exhausted(&mut parser);
+    assert_eq!(**lower, bigdecimal::BigDecimal::from(5));
+    assert_eq!(**upper, bigdecimal::BigDecimal::from(20));
+    assert_exhausted(&mut sections);
+
+    let declaration = definition(header.entry("USERDEF2").unwrap().unwrap());
+
+    assert_eq!(declaration.field_name(), "SIZE");
+    assert_eq!(declaration.text(), "SIZE,{5:20}");
+    assert_eq!(named(&record, "SCORE").text(), "123");
+    assert_eq!(named(&record, "SIZE").text(), "5");
+    assert!(error.to_string().contains("inclusive range 5 through 20"));
 }
 
 #[test]
 fn userdef_empty_fields_skip_constraints_but_not_descriptors() {
     let bytes = b"P<USERDEF1:12:N>SCORE,{5:20}<EOH><SCORE:0><EOR><SCORE:0:S><EOR>";
-    let mut parser = StrictParser::new(bytes, ParseOpts::default());
+    let mut parser_owner = StrictParser::new(bytes, ParseOpts::default());
+    let mut parser = parser_owner.into_iter();
     let _ = next_section(&mut parser);
+    drop(parser);
+    let mut parser = parser_owner.into_iter();
     let section = next_section(&mut parser);
     let Section::Record(record) = section else {
         panic!("expected empty-value record, got {section:?}");
     };
     assert!(named(&record, "SCORE").value().is_none());
+    drop(parser);
+    let mut parser = parser_owner.into_iter();
     let error = next_error(&mut parser);
     assert!(
         matches!(
-            error.kind(),
-            error::StructuralErrorKind::TypeConflict {
-                definition_span: Some(_),
+            &error,
+            error::StructuralError::UserTypeConflict {
+                declaration_span: _,
                 supplied: DataType::String,
                 ..
             }
@@ -403,13 +472,14 @@ fn userdef_unicode_membership_preserves_source_locations() {
             bytes.extend(encode(value));
             let end = bytes.len();
             bytes.extend(b"<EOR>");
-            let mut parser = StrictParser::new(
+            let mut parser_owner = StrictParser::new(
                 &bytes,
                 ParseOpts {
                     encoding,
                     field_length: unit,
                 },
             );
+            let mut parser = parser_owner.into_iter();
             let _ = next_section(&mut parser);
             if accepted {
                 let section = next_section(&mut parser);
@@ -420,10 +490,10 @@ fn userdef_unicode_membership_preserves_source_locations() {
             } else {
                 let error = next_error(&mut parser);
                 assert_eq!(error.span(), start..end, "{member:?} {value:?}: {error:?}");
-                let error::StructuralErrorKind::UserDefinitionConstraintViolation {
+                let error::StructuralError::UserDefinitionConstraintViolation {
                     constraint_span,
                     ..
-                } = error.kind()
+                } = &error
                 else {
                     panic!("expected constraint failure, got {error:?}");
                 };
@@ -439,7 +509,8 @@ fn userdef_unicode_membership_preserves_source_locations() {
 #[test]
 fn userdef_precedence_keeps_untyped_application_shaped_fields_untyped() {
     let bytes=b"P<USERDEF1:24>APP_EXAMPLE_SCORE,{5:20}<EOH><APP_EXAMPLE_SCORE:1>5<EOR><APP_EXAMPLE_SCORE:1:N>6<EOR><APP_EXAMPLE_SCORE:1>7<EOR>";
-    let mut parser = StrictParser::new(bytes, ParseOpts::default());
+    let mut parser_owner = StrictParser::new(bytes, ParseOpts::default());
+    let mut parser = parser_owner.into_iter();
     let _ = next_section(&mut parser);
     for kind in [None, Some(DataType::Number), None] {
         let section = next_section(&mut parser);
@@ -460,7 +531,8 @@ fn userdef_constraints_compare_original_spelling_and_check_nonempty_whitespace()
             " ",
         ),
     ] {
-        let mut parser = StrictParser::new(bytes, ParseOpts::default());
+        let mut parser_owner = StrictParser::new(bytes, ParseOpts::default());
+        let mut parser = parser_owner.into_iter();
         let _ = next_section(&mut parser);
         if bytes.windows(5).any(|w| w == b"<X:0>") {
             let section = next_section(&mut parser);
@@ -472,12 +544,67 @@ fn userdef_constraints_compare_original_spelling_and_check_nonempty_whitespace()
         let error = next_error(&mut parser);
         assert!(
             matches!(
-                error.kind(),
-                error::StructuralErrorKind::UserDefinitionConstraintViolation { .. }
+                &error,
+                error::StructuralError::UserDefinitionConstraintViolation { .. }
             ),
             "{error:?}"
         );
         assert_eq!(&bytes[error.span()], expected.as_bytes());
         assert_exhausted(&mut parser);
+    }
+}
+
+#[test]
+fn numeric_constraints_report_original_bytes_after_non_ascii_text() {
+    use qso_io::adif::adi::parser::strict::declarations::{
+        UserDefinitionError, UserDefinitionValueError,
+    };
+
+    for encoding in [ParseEncoding::Utf8, ParseEncoding::Latin1] {
+        let encode = |text: &str| -> Vec<u8> {
+            if encoding == ParseEncoding::Latin1 {
+                text.chars().map(|character| character as u8).collect()
+            } else {
+                text.as_bytes().to_vec()
+            }
+        };
+        let options = ParseOpts {
+            encoding,
+            field_length: LengthUnit::Bytes,
+        };
+        let bytes = document("USERDEF1", None, &encode("Café,{1:2é}"));
+        let mut owner = StrictParser::new(&bytes, options);
+        let mut sections = owner.into_iter();
+        let failure = next_error(&mut sections);
+        let invalid = bytes.len() - b"}<EOH>".len() - encode("é").len();
+        assert_eq!(failure.span(), invalid..invalid + 1, "{encoding:?}");
+        assert!(matches!(
+            failure,
+            error::StructuralError::InvalidUserDefinition {
+                cause: UserDefinitionError::InvalidRangeBound { source: None },
+                ..
+            }
+        ));
+        assert_exhausted(&mut sections);
+
+        let mut bytes = document("USERDEF1", None, b"X,{1:20}");
+        let value = encode("1é");
+        bytes.extend_from_slice(format!("<X:{}>", value.len()).as_bytes());
+        let invalid = bytes.len() + 1;
+        bytes.extend_from_slice(&value);
+        bytes.extend_from_slice(b"<EOR>");
+        let mut owner = StrictParser::new(&bytes, options);
+        let mut sections = owner.into_iter();
+        let _ = next_section(&mut sections);
+        let failure = next_error(&mut sections);
+        assert_eq!(failure.span(), invalid..invalid + 1, "{encoding:?}");
+        assert!(matches!(
+            failure,
+            error::StructuralError::UserDefinitionConstraintViolation {
+                cause: UserDefinitionValueError::InvalidRangeValue { source: None },
+                ..
+            }
+        ));
+        assert_exhausted(&mut sections);
     }
 }

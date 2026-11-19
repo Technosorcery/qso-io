@@ -8,7 +8,8 @@ pub(crate) struct NumberFailure {
     pub cause: Option<ParseBigDecimalError>,
 }
 
-pub(crate) fn parse_number(bytes: &[u8]) -> Result<BigDecimal, NumberFailure> {
+pub(crate) fn parse_number(text: &str) -> Result<BigDecimal, NumberFailure> {
+    let bytes = text.as_bytes();
     let mut digits = 0;
     let mut point = false;
 
@@ -33,14 +34,10 @@ pub(crate) fn parse_number(bytes: &[u8]) -> Result<BigDecimal, NumberFailure> {
         });
     }
 
-    // The grammar above admits ASCII only.
-    std::str::from_utf8(bytes)
-        .expect("number should be UTF-8 because its grammar check accepted only ASCII bytes")
-        .parse()
-        .map_err(|cause| NumberFailure {
-            span: 0..bytes.len(),
-            cause: Some(cause),
-        })
+    text.parse().map_err(|cause| NumberFailure {
+        span: 0..bytes.len(),
+        cause: Some(cause),
+    })
 }
 
 #[derive(Debug, Clone)]

@@ -1,17 +1,15 @@
 use std::{borrow::Cow, collections::HashSet};
 
-use super::{DataType, ParseEncoding, ValueError, ValueFailure, identifiers, source_range};
+use super::{DataType, ValueError, ValueFailure, identifiers};
 use crate::adif::{
     Award, AwardSponsor, Credit, QslMedium, SecondarySubdivision, SecondarySubdivisionAlt,
-    text::check_text,
 };
 
-pub(super) fn parse<'a>(
+pub(crate) fn parse<'a>(
     kind: DataType,
-    text: Cow<'a, str>,
-    raw: &'a [u8],
-    encoding: ParseEncoding,
-) -> Result<(Vec<Cow<'a, str>>, Cow<'a, str>), ValueFailure> {
+    text: &Cow<'a, str>,
+    check_text: &impl Fn(DataType, &str) -> Result<(), std::ops::Range<usize>>,
+) -> Result<Vec<Cow<'a, str>>, ValueFailure> {
     let (separator, minimum, cause) = match kind {
         DataType::AwardList => (',', 1, ValueError::InvalidAwardList),
         DataType::CreditList => (',', 1, ValueError::InvalidCreditList),
@@ -26,12 +24,15 @@ pub(super) fn parse<'a>(
         ),
         _ => (',', 1, ValueError::InvalidString),
     };
+
     let fail = |range, enumeration| ValueFailure {
+        numeric_cause: None,
         cause,
-        span: source_range(&text, range, encoding),
+        span: range,
         enumeration,
     };
-    check_text(raw, encoding, false).map_err(|span| ValueFailure {
+    check_text(kind, text).map_err(|span| ValueFailure {
+        numeric_cause: None,
         cause,
         span,
         enumeration: None,
@@ -40,11 +41,13 @@ pub(super) fn parse<'a>(
     let mut offset = 0;
     let mut count = 0;
     let mut names = HashSet::new();
+
     for member in text.split(separator) {
         let end = offset + member.len();
         if member.is_empty() {
             return Err(fail(offset..end, None));
         }
+
         match kind {
             DataType::AwardList => {
                 member
@@ -77,6 +80,7 @@ pub(super) fn parse<'a>(
                 if parts.len() != 3 || parts.iter().any(|p| p.is_empty()) {
                     return Err(fail(offset..end, None));
                 }
+
                 if parts[0].parse::<AwardSponsor>().is_err() {
                     return Err(fail(
                         offset..offset + parts[0].len() + 1,
@@ -96,9 +100,11 @@ pub(super) fn parse<'a>(
                 let Some((name, code)) = member.split_once(':') else {
                     return Err(fail(end..end, None));
                 };
+
                 if name.is_empty() || code.is_empty() || !names.insert(name.to_ascii_uppercase()) {
                     return Err(fail(offset..end, None));
                 }
+
                 if SecondarySubdivisionAlt::parse_member(member).is_none() {
                     return Err(fail(
                         offset..end,
@@ -112,30 +118,32 @@ pub(super) fn parse<'a>(
                 } else {
                     DataType::POTARef
                 };
-                let raw_span = source_range(&text, offset..end, encoding);
-                identifiers::check(member_kind, member, &raw[raw_span.clone()], encoding).map_err(
-                    |e| ValueFailure {
-                        cause: e.cause,
-                        span: raw_span.start + e.span.start..raw_span.start + e.span.end,
-                        enumeration: e.enumeration,
-                    },
-                )?;
+
+                let raw_span = offset..end;
+                identifiers::check(member_kind, member, check_text).map_err(|e| ValueFailure {
+                    numeric_cause: None,
+                    cause: e.cause,
+                    span: raw_span.start + e.span.start..raw_span.start + e.span.end,
+                    enumeration: e.enumeration,
+                })?;
             }
             _ => {}
         }
         count += 1;
         offset = end + separator.len_utf8();
     }
+
     if count < minimum {
         return Err(fail(text.len()..text.len(), None));
     }
 
-    let members = match &text {
+    let members = match text {
         Cow::Borrowed(source) => source.split(separator).map(Cow::Borrowed).collect(),
         Cow::Owned(source) => source
             .split(separator)
             .map(|part| Cow::Owned(part.to_owned()))
             .collect(),
     };
-    Ok((members, text))
+
+    Ok(members)
 }

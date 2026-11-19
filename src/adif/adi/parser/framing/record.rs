@@ -2,9 +2,9 @@
 
 use std::ops::Range;
 
-use winnow::{Parser as _, Result, stream::Location, token::take_until};
+use winnow::{Parser as _, stream::Location, token::take_until};
 
-use super::super::options::ParseOpts;
+use super::super::{error::Result, options::ParseOpts};
 use super::field::PermissiveField;
 use super::{Input, field, fields};
 use crate::adif::adi::lookup::LookupError;
@@ -29,7 +29,8 @@ impl<'a> PermissiveRecord<'a> {
         )
     }
 
-    /// Iterates over all matching fields in source order without a precedence rule.
+    /// Iterates over all matching fields in source order without a precedence
+    /// rule.
     pub fn fields_named<'s>(&'s self, name: &str) -> impl Iterator<Item = &'s PermissiveField<'a>> {
         self.fields
             .iter()
@@ -41,7 +42,8 @@ impl<'a> PermissiveRecord<'a> {
         &self.fields
     }
 
-    /// Returns the byte range from the first descriptor through the closing EOR bracket.
+    /// Returns the byte range in the parser's input from the first descriptor
+    /// through EOR's closing `>`, with an exclusive end.
     pub fn span(&self) -> Range<usize> {
         self.span.clone()
     }

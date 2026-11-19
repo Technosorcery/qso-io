@@ -1,9 +1,10 @@
-//! Amateur Data Interchange Format (ADIF) data types, references, and ADI support.
+//! Amateur Data Interchange Format (ADIF) data types, references, and ADI/ADX
+//! support.
 //!
 //! [`DataType`] describes ADIF value categories. [`value`] provides stored ADIF
 //! values, and [`StandardField`] describes standard field definitions.
-//! Reference enums describe ADIF enumeration identities and their metadata.
-//! See [`adi::parser`] for strict and permissive ADI parsing interfaces.
+//! Reference enums describe ADIF enumeration identities and their metadata. See
+//! [`adi::parser`] and [`adx::parser`] for strict and permissive parsing.
 
 use std::str::Utf8Error;
 
@@ -20,8 +21,11 @@ pub use standard_field::{FieldSection, StandardField};
 
 /// Borrowed ADI sections, their parser, and structural diagnostics.
 pub mod adi;
+/// Borrowed ADX sections with located warnings and typed or unchecked fields.
+pub mod adx;
 mod enumerations;
 mod number;
+mod parse;
 mod standard_field;
 mod text;
 pub mod value;
@@ -45,9 +49,10 @@ pub enum DecodeError {
     ),
 }
 
-/// ADIF value categories and their optional descriptor indicators.
+/// ADIF value categories and their optional type indicators.
 ///
-/// See [ADIF 3.1.8 data types](https://www.adif.org.uk/318/ADIF_318.htm#Data_Types).
+/// See
+/// [ADIF 3.1.8 data types](https://www.adif.org.uk/318/ADIF_318.htm#Data_Types).
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum DataType {
     /// A comma-delimited list of members of the Award enumeration
@@ -70,8 +75,8 @@ pub enum DataType {
     Digit,
     /// A sequence of one or more Digits that represents a decimal integer.
     ///
-    /// An optional minus sign (ASCII code 45) precedes the Digits. Leading zeros
-    /// are permitted.
+    /// An optional minus sign (ASCII code 45) precedes the Digits. Leading
+    /// zeros are permitted.
     Integer,
     /// A sequence of one or more Digits that represents a decimal number.
     ///
@@ -121,8 +126,8 @@ pub enum DataType {
     IntlMultilineString,
     /// A set of permitted case-insensitive ASCII values.
     ///
-    /// Set notation, for example {A, B, C, D}, or a table defines the set. A field
-    /// contains one value from that set.
+    /// Set notation, for example {A, B, C, D}, or a table defines the set. A
+    /// field contains one value from that set.
     Enumeration,
     /// A case-insensitive 2-character, 4-character, 6-character, or 8-character
     /// Maidenhead locator.
@@ -131,27 +136,27 @@ pub enum DataType {
     /// characters. See the field descriptions for the permitted numbers of
     /// characters.
     GridSquare,
-    /// For a 10-character Maidenhead locator, contains characters 9 and 10.
-    /// For a 12-character Maidenhead locator, contains characters 9, 10, 11 and
-    /// 12.
+    /// For a 10-character Maidenhead locator, contains characters 9 and 10. For
+    /// a 12-character Maidenhead locator, contains characters 9, 10, 11 and 12.
     ///
     /// Characters 9 and 10 are case-insensitive ASCII letters in the range A-X.
     /// Characters 11 and 12 are Digits in the range 0-9.
     GridSquareExt,
     /// A comma-delimited list of GridSquare items
     GridSquareList,
-    /// A sequence of 11 characters for a latitude or longitude in XDDD
-    /// MM.MMM format, where
+    /// A sequence of 11 characters for a latitude or longitude in XDDD MM.MMM
+    /// format, where
     ///
     /// * X is a directional Character from the set {E, W, N, S}
     /// * DDD is a 3-Digit degrees specifier, where 0 <= DDD <= 180 [use leading
     ///   zeroes]
     /// * There is a single space character in between DDD and MM.MMM
-    /// * MM.MMM is an unsigned Number minutes specifier, where
-    ///   00.000 <= MM.MMM <= 59.999. The decimal point is in the third position.
-    ///   The format has leading and trailing zeros.
+    /// * MM.MMM is an unsigned Number minutes specifier, where 00.000 <= MM.MMM
+    ///   <= 59.999. The decimal point is in the third position. The format has
+    ///   leading and trailing zeros.
     Location,
-    /// A case-insensitive Parks on the Air park reference of 6 to 17 Characters.
+    /// A case-insensitive Parks on the Air park reference of 6 to 17
+    /// Characters.
     ///
     /// The form is `xxxx-nnnnn[@yyyyyy]`, with these components:
 
@@ -162,7 +167,8 @@ pub enum DataType {
     ///   characters. Its exact format follows the POTA website.
     /// * yyyyyy is an optional ISO 3166-2 code of 4 to 6 characters. For a park
     ///   reference with multiple locations (such as a trail), it identifies the
-    ///   contact's state, province, prefecture, or primary administration location.
+    ///   contact's state, province, prefecture, or primary administration
+    ///   location.
     POTARef,
     /// A comma-delimited list of one or more POTARef items.
     POTARefList,
@@ -171,22 +177,25 @@ pub enum DataType {
     ///
     /// `MA,Franklin:MA,Hampshire`
     SecondarySubdivisionList,
-    /// An unordered, semicolon-delimited list of one or more alternate secondary
-    /// administrative subdivisions, each written as `enumeration-name:enumeration-code`.
+    /// An unordered, semicolon-delimited list of one or more alternate
+    /// secondary administrative subdivisions, each written as
+    /// `enumeration-name:enumeration-code`.
     ///
     /// A code covering multiple localities separates them with `/`. Each
     /// enumeration name can occur only once and must apply to the DXCC entity.
     /// For example: `NZ_Regions:Hawkes Bay/Wairoa`.
     ///
-    /// `CNTY_ALT` and `MY_CNTY_ALT` use this type. It has no descriptor indicator.
-    /// See [ADIF 3.1.8 data types](https://www.adif.org.uk/318/ADIF_318.htm#Data_Types).
+    /// `CNTY_ALT` and `MY_CNTY_ALT` use this type. It has no descriptor
+    /// indicator. See
+    /// [ADIF 3.1.8 data types](https://www.adif.org.uk/318/ADIF_318.htm#Data_Types).
     SecondaryAdministrativeSubdivisionListAlt,
     /// An International SOTA reference formed from an ITU prefix, an optional
     /// SOTA subdivision, `/`, and a SOTA reference number, in that order.
     ///
     /// Examples: `W2/WE-003`, `G/LD-003`.
     SOTARef,
-    /// A case-insensitive International WWFF reference with the form `xxFF-nnnn`.
+    /// A case-insensitive International WWFF reference with the form
+    /// `xxFF-nnnn`.
     ///
     /// The national program identifier `xx` occupies 1–4 characters, followed
     /// by the literal `FF-` and a four-digit program-local number padded with
@@ -197,7 +206,8 @@ pub enum DataType {
 }
 
 impl DataType {
-    /// Reports whether this data type is defined only for importing legacy data.
+    /// Reports whether this data type is defined only for importing legacy
+    /// data.
     ///
     /// Returns `true` for [`Self::AwardList`] and `false` for other types.
     pub fn import_only(self) -> bool {
@@ -243,13 +253,10 @@ impl DataType {
 
 /// Failure to recognize a supplied ADIF type indicator.
 #[derive(Debug, Error)]
-pub enum DataTypeError {
-    #[error("Unknown type specifier: {0}")]
-    /// The supplied text is not a recognized single type indicator.
-    UnknownTypeSpecifier(
-        /// Supplied unrecognized indicator text, with its supplied casing.
-        String,
-    ),
+#[error("Unknown type specifier: {supplied}")]
+pub struct DataTypeError {
+    /// Supplied unrecognized indicator text, with its supplied casing.
+    pub supplied: String,
 }
 
 impl TryFrom<&str> for DataType {
@@ -267,7 +274,9 @@ impl TryFrom<&str> for DataType {
             "G" | "g" => Ok(DataType::IntlMultilineString),
             "E" | "e" => Ok(DataType::Enumeration),
             "L" | "l" => Ok(DataType::Location),
-            u => Err(DataTypeError::UnknownTypeSpecifier(u.to_owned())),
+            u => Err(DataTypeError {
+                supplied: u.to_owned(),
+            }),
         }
     }
 }

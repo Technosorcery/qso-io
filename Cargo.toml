@@ -3,19 +3,20 @@ name = "qso-io"
 version = "0.1.0"
 edition = "2024"
 rust-version = "1.88"
-description = "Amateur radio data interchange with strict and permissive ADI parsing"
+description = "Amateur radio data interchange with strict and permissive ADI and ADX parsing"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/Technosorcery/qso-io"
 readme = "README.md"
-keywords = ["amateur-radio", "ham-radio", "adif", "adi", "parser"]
+keywords = ["amateur-radio", "ham-radio", "adif", "adi", "adx"]
 categories = ["parser-implementations"]
 
 [dependencies]
 bigdecimal = "0.4.11"
-bstr = "1.13.1"
 caseless = "0.2.2"
 chrono = "0.4.45"
 encoding_rs = "0.8.44"
+quick-xml = "0.42.0"
 strum = { version = "0.28.0", features = ["derive"] }
 thiserror = "2.0.21"
 winnow = "1.0.5"
+xmlparser = "0.13.6"

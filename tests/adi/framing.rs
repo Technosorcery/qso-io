@@ -1,6 +1,6 @@
 //! Shared framing requirements, observed through both public parsing interfaces.
 use super::support::*;
-use qso_io::adif::adi::parser::error::{StructuralErrorKind, SyntaxErrorKind};
+use qso_io::adif::adi::parser::error::{StructuralError, SyntaxErrorKind};
 use qso_io::adif::adi::parser::options::{LengthUnit, ParseEncoding, ParseOpts};
 use qso_io::adif::adi::parser::permissive::{PermissiveParser, PermissiveSection};
 use qso_io::adif::adi::parser::strict::StrictParser;
@@ -9,7 +9,8 @@ use qso_io::adif::{DataType, DecodeError};
 #[test]
 fn descriptors_preserve_spelling_leading_zero_lengths_and_explicit_empty_values() {
     let bytes = b"<nAmE:003>Ray<EMPTY:0><QTH:3>Ann<EOR>";
-    let mut strict = StrictParser::new(bytes, ParseOpts::default());
+    let mut strict_owner = StrictParser::new(bytes, ParseOpts::default());
+    let mut strict = strict_owner.into_iter();
     let r = record(next_section(&mut strict));
     assert_eq!(
         r.fields().iter().map(|f| f.name()).collect::<Vec<_>>(),
@@ -54,14 +55,15 @@ fn strict_indicator_case_and_adi_eligibility_are_public_behavior() {
     ] {
         for supplied in [indicator, indicator.to_ascii_lowercase()] {
             let input = format!("<APP_TEST_VALUE:0:{supplied}><EOR>");
-            let mut parser = StrictParser::new(input.as_bytes(), ParseOpts::default());
+            let mut parser_owner = StrictParser::new(input.as_bytes(), ParseOpts::default());
+            let mut parser = parser_owner.into_iter();
             if matches!(
                 expected,
                 DataType::IntlString | DataType::IntlMultilineString
             ) {
                 let error = next_error(&mut parser);
                 assert!(
-                    matches!(error.kind(),StructuralErrorKind::TypeUnavailableInAdi{data_type}if *data_type==expected),
+                    matches!(&error,StructuralError::TypeUnavailableInAdi{data_type, .. }if *data_type==expected),
                     "{input}: {error:?}"
                 );
                 assert_eq!(error.span(), 18..19);
@@ -88,11 +90,12 @@ fn malformed_lengths_and_descriptors_fail_through_both_interfaces() {
         b"<NAME:3",
         b"<EOR>",
     ] {
-        let mut strict = StrictParser::new(bytes, ParseOpts::default());
+        let mut strict_owner = StrictParser::new(bytes, ParseOpts::default());
+        let mut strict = strict_owner.into_iter();
         let mut permissive = PermissiveParser::new(bytes, ParseOpts::default());
         for error in [next_error(&mut strict), next_error(&mut permissive)] {
             assert!(
-                matches!(error.kind(), StructuralErrorKind::Syntax { .. }),
+                matches!(&error, StructuralError::Syntax { .. }),
                 "input {bytes:?}: {error:?}"
             );
         }
@@ -101,12 +104,14 @@ fn malformed_lengths_and_descriptors_fail_through_both_interfaces() {
     }
     for code in ["Z", "z", "", "SS", "1"] {
         let bytes = format!("<NAME:3:{code}>Ray<EOR>");
-        let mut parser = StrictParser::new(bytes.as_bytes(), ParseOpts::default());
+        let mut parser_owner = StrictParser::new(bytes.as_bytes(), ParseOpts::default());
+        let mut parser = parser_owner.into_iter();
         assert!(
             matches!(
-                next_error(&mut parser).kind(),
-                StructuralErrorKind::Syntax {
-                    reason: SyntaxErrorKind::UnknownTypeIndicator
+                &next_error(&mut parser),
+                StructuralError::Syntax {
+                    reason: SyntaxErrorKind::UnknownTypeIndicator { .. },
+                    ..
                 }
             ),
             "{bytes}"
@@ -129,7 +134,14 @@ fn header_detection_and_preamble_preservation_use_the_first_byte() {
         ),
         (b" \n<EOH><NAME:3>Ray<EOR>", Some(b" \n".as_slice())),
     ] {
-        let parsed = parse_file(bytes, ParseEncoding::Ascii, LengthUnit::Bytes);
+        let mut owner = StrictParser::new(
+            bytes,
+            ParseOpts {
+                encoding: ParseEncoding::Ascii,
+                field_length: LengthUnit::Bytes,
+            },
+        );
+        let parsed = parse_file(&mut owner);
         assert_eq!(parsed.header.as_ref().map(|h| h.raw_text()), expected);
         assert_eq!(parsed.records.len(), 1);
         assert_eq!(named(&parsed.records[0], "NAME").text(), "Ray");
@@ -153,7 +165,8 @@ fn header_detection_and_preamble_preservation_use_the_first_byte() {
         b"Generated<PROGRAMID:x>abc<EOH><NAME:3>Ray<EOR>",
         b"\n<NAME:3>Ray<EOR>",
     ] {
-        let mut s = StrictParser::new(bytes, ParseOpts::default());
+        let mut s_owner = StrictParser::new(bytes, ParseOpts::default());
+        let mut s = s_owner.into_iter();
         let mut p = PermissiveParser::new(bytes, ParseOpts::default());
         let _ = next_error(&mut s);
         let _ = next_error(&mut p);
@@ -169,7 +182,14 @@ fn ignored_text_preserves_order_record_boundaries_and_terminal_line_breaks() {
             let bytes = format!(
                 "<NAME:3>Ray # arbitrary text\r\n<QSO_DATE:8>19960513 text <qth:3>Ann tail <eOr>{gap}<NAME:3>Bob<EOR>{end}"
             );
-            let parsed = parse_file(bytes.as_bytes(), ParseEncoding::Ascii, LengthUnit::Bytes);
+            let mut owner = StrictParser::new(
+                bytes.as_bytes(),
+                ParseOpts {
+                    encoding: ParseEncoding::Ascii,
+                    field_length: LengthUnit::Bytes,
+                },
+            );
+            let parsed = parse_file(&mut owner);
             assert_eq!(parsed.records.len(), 2);
             assert_eq!(
                 parsed.records[0]
@@ -188,6 +208,7 @@ fn ignored_text_preserves_order_record_boundaries_and_terminal_line_breaks() {
     }
     assert!(
         StrictParser::new(b"", ParseOpts::default())
+            .into_iter()
             .next()
             .is_none()
     );
@@ -208,7 +229,8 @@ fn scalar_lengths_preserve_all_utf8_widths_combining_scalars_and_following_field
             encoding: ParseEncoding::Utf8,
             field_length: LengthUnit::UnicodeScalars,
         };
-        let mut s = StrictParser::new(input.as_bytes(), opts);
+        let mut s_owner = StrictParser::new(input.as_bytes(), opts);
+        let mut s = s_owner.into_iter();
         let r = record(next_section(&mut s));
         assert_eq!(named(&r, "NAME").raw_data(), expected.as_bytes());
         assert_eq!(named(&r, "NAME").text(), expected);
@@ -243,12 +265,13 @@ fn missing_terminators_and_truncation_retain_public_counts_and_locations() {
                 (b"<NAME:1>", "NAME", 1, 0),
                 (b"Generated<PROGRAMID:3>ab", "PROGRAMID", 3, 2),
             ] {
-                let mut s = StrictParser::new(bytes, opts);
+                let mut s_owner = StrictParser::new(bytes, opts);
+                let mut s = s_owner.into_iter();
                 let mut p = PermissiveParser::new(bytes, opts);
                 for error in [next_error(&mut s), next_error(&mut p)] {
                     assert_eq!(error.span(), bytes.len()..bytes.len());
                     assert!(
-                        matches!(error.kind(),StructuralErrorKind::TruncatedValue{field_name,declared:d,available:a,unit} if field_name==name&&*d==declared&&*a==available&&*unit==field_length),
+                        matches!(&error,StructuralError::TruncatedValue{field_name,declared:d,available:a,unit, .. } if field_name==name&&*d==declared&&*a==available&&*unit==field_length),
                         "{encoding:?}/{field_length:?}: {error:?}"
                     );
                 }
@@ -258,24 +281,39 @@ fn missing_terminators_and_truncation_retain_public_counts_and_locations() {
         }
     }
     for (bytes, reason) in [
-        (b"<NAME:3>Ray".as_slice(), SyntaxErrorKind::MissingEor),
+        (
+            b"<NAME:3>Ray".as_slice(),
+            (|actual: &SyntaxErrorKind| matches!(actual, SyntaxErrorKind::MissingEor))
+                as fn(&SyntaxErrorKind) -> bool,
+        ),
         (
             b"<NAME:3>Ray trailing text\r\n",
-            SyntaxErrorKind::MissingEor,
+            (|actual: &SyntaxErrorKind| matches!(actual, SyntaxErrorKind::MissingEor))
+                as fn(&SyntaxErrorKind) -> bool,
         ),
-        (b"<NAME:0>", SyntaxErrorKind::MissingEor),
-        (b"Generated<PROGRAMID:0>", SyntaxErrorKind::MissingEoh),
+        (
+            b"<NAME:0>",
+            (|actual: &SyntaxErrorKind| matches!(actual, SyntaxErrorKind::MissingEor))
+                as fn(&SyntaxErrorKind) -> bool,
+        ),
+        (
+            b"Generated<PROGRAMID:0>",
+            (|actual: &SyntaxErrorKind| matches!(actual, SyntaxErrorKind::MissingEoh))
+                as fn(&SyntaxErrorKind) -> bool,
+        ),
         (
             b"Generated<PROGRAMID:3>abc trailing\n",
-            SyntaxErrorKind::MissingEoh,
+            (|actual: &SyntaxErrorKind| matches!(actual, SyntaxErrorKind::MissingEoh))
+                as fn(&SyntaxErrorKind) -> bool,
         ),
     ] {
-        let mut s = StrictParser::new(bytes, ParseOpts::default());
+        let mut s_owner = StrictParser::new(bytes, ParseOpts::default());
+        let mut s = s_owner.into_iter();
         let mut p = PermissiveParser::new(bytes, ParseOpts::default());
         for error in [next_error(&mut s), next_error(&mut p)] {
             assert_eq!(error.span(), bytes.len()..bytes.len());
             assert!(
-                matches!(error.kind(),StructuralErrorKind::Syntax{reason:r}if *r==reason),
+                matches!(&error,StructuralError::Syntax{reason:r, .. }if reason(r)),
                 "{error:?}"
             );
         }
@@ -288,12 +326,13 @@ fn missing_terminators_and_truncation_retain_public_counts_and_locations() {
             encoding: ParseEncoding::Utf8,
             field_length: unit,
         };
-        let mut s = StrictParser::new(input.as_bytes(), opts);
+        let mut s_owner = StrictParser::new(input.as_bytes(), opts);
+        let mut s = s_owner.into_iter();
         let mut p = PermissiveParser::new(input.as_bytes(), opts);
         for error in [next_error(&mut s), next_error(&mut p)] {
             assert_eq!(error.span(), input.len()..input.len());
             assert!(
-                matches!(error.kind(),StructuralErrorKind::TruncatedValue{declared:4,available:a,unit:u,..}if *a==available&&*u==unit),
+                matches!(&error,StructuralError::TruncatedValue{declared:4,available:a,unit:u,..}if *a==available&&*u==unit),
                 "{error:?}"
             );
         }
@@ -303,28 +342,39 @@ fn missing_terminators_and_truncation_retain_public_counts_and_locations() {
 #[test]
 fn malformed_fields_keep_their_diagnostics_in_unfinished_sections() {
     for (bytes, reason, span) in [
-        (b"<NAME:".as_slice(), SyntaxErrorKind::InvalidLength, 6..6),
+        (
+            b"<NAME:".as_slice(),
+            (|actual: &SyntaxErrorKind| matches!(actual, SyntaxErrorKind::InvalidLength))
+                as fn(&SyntaxErrorKind) -> bool,
+            6..6,
+        ),
         (
             b"Generated<PROGRAMID:",
-            SyntaxErrorKind::InvalidLength,
+            (|actual: &SyntaxErrorKind| matches!(actual, SyntaxErrorKind::InvalidLength))
+                as fn(&SyntaxErrorKind) -> bool,
             20..20,
         ),
         (
             b"<NAME:3:Z>Ray",
-            SyntaxErrorKind::UnknownTypeIndicator,
+            (|actual: &SyntaxErrorKind| {
+                matches!(actual, SyntaxErrorKind::UnknownTypeIndicator { .. })
+            }) as fn(&SyntaxErrorKind) -> bool,
             8..9,
         ),
         (
             b"Generated<PROGRAMID:3:Z>abc",
-            SyntaxErrorKind::UnknownTypeIndicator,
+            (|actual: &SyntaxErrorKind| {
+                matches!(actual, SyntaxErrorKind::UnknownTypeIndicator { .. })
+            }) as fn(&SyntaxErrorKind) -> bool,
             22..23,
         ),
     ] {
-        let mut s = StrictParser::new(bytes, ParseOpts::default());
+        let mut s_owner = StrictParser::new(bytes, ParseOpts::default());
+        let mut s = s_owner.into_iter();
         let error = next_error(&mut s);
         assert_eq!(error.span(), span);
         assert!(
-            matches!(error.kind(),StructuralErrorKind::Syntax{reason:r}if *r==reason),
+            matches!(&error,StructuralError::Syntax{reason:r, .. }if reason(r)),
             "{error:?}"
         );
         assert_exhausted(&mut s);
@@ -339,15 +389,17 @@ fn malformed_fields_keep_their_diagnostics_in_unfinished_sections() {
             encoding: ParseEncoding::Utf8,
             field_length: LengthUnit::UnicodeScalars,
         };
-        let mut s = StrictParser::new(bytes, opts);
+        let mut s_owner = StrictParser::new(bytes, opts);
+        let mut s = s_owner.into_iter();
         let mut p = PermissiveParser::new(bytes, opts);
         for error in [next_error(&mut s), next_error(&mut p)] {
             assert_eq!(error.span().start, start);
             assert!(
                 matches!(
-                    error.kind(),
-                    StructuralErrorKind::Decoding {
-                        cause: DecodeError::Utf8(_)
+                    &error,
+                    StructuralError::Decoding {
+                        cause: DecodeError::Utf8(_),
+                        ..
                     }
                 ),
                 "{error:?}"
@@ -358,32 +410,73 @@ fn malformed_fields_keep_their_diagnostics_in_unfinished_sections() {
 
 #[test]
 fn decoding_is_confined_to_framed_values_and_preserves_untyped_repertoires() {
-    let mut s = StrictParser::new(
+    let mut s_owner = StrictParser::new(
         b"<NAME:1>A\xff<EOR>",
         ParseOpts {
             encoding: ParseEncoding::Utf8,
             field_length: LengthUnit::UnicodeScalars,
         },
     );
+    let mut s = s_owner.into_iter();
     assert_eq!(named(&record(next_section(&mut s)), "NAME").text(), "A");
     assert_exhausted(&mut s);
-    let parsed = parse_file(
+    let mut owner = StrictParser::new(
         b"<UNKNOWN:4>\0\r\n\x7f<EOR>",
-        ParseEncoding::Ascii,
-        LengthUnit::Bytes,
+        ParseOpts {
+            encoding: ParseEncoding::Ascii,
+            field_length: LengthUnit::Bytes,
+        },
     );
+    let parsed = parse_file(&mut owner);
     assert_eq!(
         named(&parsed.records[0], "UNKNOWN").raw_data(),
         b"\0\r\n\x7f"
     );
-    let parsed = parse_file(
+    let mut owner = StrictParser::new(
         b"<TEST:3>\x80\xe9\xff<EOR>",
-        ParseEncoding::Latin1,
-        LengthUnit::Bytes,
+        ParseOpts {
+            encoding: ParseEncoding::Latin1,
+            field_length: LengthUnit::Bytes,
+        },
     );
+    let parsed = parse_file(&mut owner);
     assert_eq!(named(&parsed.records[0], "TEST").text(), "\u{80}éÿ");
     assert_eq!(
         named(&parsed.records[0], "TEST").raw_data(),
         b"\x80\xe9\xff"
     );
+}
+
+#[test]
+fn scalar_decoding_stops_at_field_boundaries_and_locates_later_invalid_sequences() {
+    let input = b"<NAME:1>A\xff<EOR><NAME:2>B\xff<EOR>";
+    let options = ParseOpts {
+        encoding: ParseEncoding::Utf8,
+        field_length: LengthUnit::UnicodeScalars,
+    };
+    let mut strict_owner = StrictParser::new(input, options);
+    let mut strict = strict_owner.into_iter();
+    let first = record(next_section(&mut strict));
+    assert_eq!(named(&first, "NAME").text(), "A");
+    let mut permissive = PermissiveParser::new(input, options);
+    let Some(Ok(PermissiveSection::Record(first))) = permissive.next() else {
+        panic!("expected first record before the invalid second value");
+    };
+    assert_eq!(first.fields()[0].text(), Ok("A"));
+
+    for failure in [next_error(&mut strict), next_error(&mut permissive)] {
+        assert_eq!(&input[failure.span()], b"\xff");
+        assert_eq!(failure.span().start, input.len() - b"\xff<EOR>".len());
+        let StructuralError::Decoding {
+            cause: DecodeError::Utf8(cause),
+            ..
+        } = failure
+        else {
+            panic!("expected second value's UTF-8 error, got {failure:?}");
+        };
+        assert_eq!(cause.valid_up_to(), 1);
+        assert_eq!(cause.error_len(), Some(1));
+    }
+    assert_exhausted(&mut strict);
+    assert_exhausted(&mut permissive);
 }

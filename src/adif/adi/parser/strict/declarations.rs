@@ -4,15 +4,15 @@ use std::{borrow::Cow, ops::Range};
 
 use bigdecimal::{BigDecimal, num_bigint::BigUint};
 use thiserror::Error;
-use winnow::{
-    Result,
-    error::{ContextError, FromExternalError},
-};
 
-use super::super::{error::AdiError, framing::field::PermissiveField};
+use super::super::{
+    error::{Result, StructuralError},
+    framing::field::PermissiveField,
+};
 use super::field::{DataSpecifier, strict_specifier};
-use super::{Stream, decode_located, decoding_error};
+use super::{Stream, decoding_error};
 use crate::adif::DataType;
+use crate::adif::value::UserDefinitionConstraint;
 use crate::adif::{number::parse_number, text::check_text};
 
 /// A parsed USERDEFn header declaration with its supplied spelling and bytes.
@@ -21,13 +21,18 @@ pub struct UserDefinition<'a> {
     pub(super) specifier: DataSpecifier<'a>,
     pub(super) number: BigUint,
     pub(super) field_name: String,
-    pub(super) constraint: Option<UserDefinitionConstraint>,
+    pub(super) constraint: Option<LocatedConstraint>,
     pub(super) target_span: Range<usize>,
-    pub(super) constraint_span: Option<Range<usize>>,
     pub(super) raw_data: &'a [u8],
     pub(super) text: Cow<'a, str>,
     pub(super) descriptor_span: Range<usize>,
     pub(super) value_span: Range<usize>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) struct LocatedConstraint {
+    pub(super) constraint: UserDefinitionConstraint,
+    pub(super) span: Range<usize>,
 }
 
 impl<'a> UserDefinition<'a> {
@@ -46,14 +51,15 @@ impl<'a> UserDefinition<'a> {
         &self.field_name
     }
 
-    /// Returns the supplied record-field type indicator, or None if it is absent.
+    /// Returns the supplied record-field type indicator, or None if it is
+    /// absent.
     pub fn data_type(&self) -> Option<DataType> {
         self.specifier.type_indicator
     }
 
     /// Borrows the optional parsed enumeration or numeric range.
     pub fn constraint(&self) -> Option<&UserDefinitionConstraint> {
-        self.constraint.as_ref()
+        self.constraint.as_ref().map(|located| &located.constraint)
     }
 
     /// Returns the descriptor length in the selected parsing unit.
@@ -82,22 +88,8 @@ impl<'a> UserDefinition<'a> {
     }
 }
 
-/// An enumeration or exact numeric range declared by USERDEFn.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum UserDefinitionConstraint {
-    /// Nonempty String members with their supplied spelling and order.
-    Enumeration(Vec<String>),
-    /// A range whose upper bound is strictly greater than its lower bound.
-    Range {
-        /// Exact lower bound.
-        lower: BigDecimal,
-        /// Exact upper bound.
-        upper: BigDecimal,
-    },
-}
-
 /// The part of a USERDEFn declaration that failed parsing.
-#[derive(Debug, Error, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Error, Clone, PartialEq)]
 pub enum UserDefinitionError {
     /// The declaration number is not positive.
     #[error("invalid declaration number")]
@@ -113,28 +105,33 @@ pub enum UserDefinitionError {
     InvalidEnumeration,
     /// A range bound fails the ADIF Number grammar.
     #[error("invalid numeric range bound")]
-    InvalidRangeBound,
+    InvalidRangeBound {
+        /// Underlying decimal conversion failure, when available.
+        #[source]
+        source: Option<bigdecimal::ParseBigDecimalError>,
+    },
     /// The upper bound is equal to or smaller than the lower bound.
     #[error("upper range bound must exceed lower bound")]
     InvalidRangeOrder,
 }
 
 /// A supplied nonempty value fails its document USERDEF constraint.
-#[derive(Debug, Error, Clone, PartialEq, Eq)]
-pub enum UserDefinitionValueError {
+#[derive(Debug, Error, Clone, PartialEq)]
+pub enum UserDefinitionValueError<'header> {
     /// Contents required for a range are not an ADIF Number.
-    #[error("range value is not an ADIF Number: {cause}")]
+    #[error("range value is not an ADIF Number")]
     InvalidRangeValue {
-        /// Type-specific numeric grammar reason.
-        cause: crate::adif::value::ValueError,
+        /// Underlying decimal conversion failure, when available.
+        #[source]
+        source: Option<bigdecimal::ParseBigDecimalError>,
     },
     /// A Number is outside the declaration's inclusive bounds.
     #[error("value is outside inclusive range {lower} through {upper}")]
     OutOfRange {
-        /// Exact inclusive lower bound.
-        lower: BigDecimal,
-        /// Exact inclusive upper bound.
-        upper: BigDecimal,
+        /// Exact inclusive lower bound borrowed from the declaration.
+        lower: &'header BigDecimal,
+        /// Exact inclusive upper bound borrowed from the declaration.
+        upper: &'header BigDecimal,
     },
     /// The supplied spelling matches no member under default Unicode folding.
     #[error("value is not a member of the declared enumeration")]
@@ -152,18 +149,11 @@ pub(super) fn parse<'a>(
     input: &Stream<'a>,
     framed: PermissiveField<'a>,
 ) -> Result<UserDefinition<'a>> {
-    let specifier = strict_specifier(framed.specifier, framed.descriptor_span.clone())
-        .map_err(|cause| ContextError::from_external_error(input, cause))?;
-    let failure = |cause, span| {
-        ContextError::from_external_error(
-            input,
-            AdiError::InvalidUserDefinition {
-                field_name: framed.specifier.name.to_string(),
-                span,
-                cause,
-                numeric_cause: None,
-            },
-        )
+    let specifier = strict_specifier(framed.specifier, framed.descriptor_span.clone())?;
+    let failure = |cause, span| StructuralError::InvalidUserDefinition {
+        field_name: framed.specifier.name.to_string(),
+        span,
+        cause,
     };
 
     let suffix = framed.specifier.name.get(7..).ok_or_else(|| {
@@ -188,51 +178,50 @@ pub(super) fn parse<'a>(
         ));
     }
 
-    let bytes = framed.raw_data;
-    let comma = bytes.iter().position(|b| *b == b',');
-    let name_end = comma.unwrap_or(bytes.len());
-    let field_name = decode_located(
-        input,
-        &bytes[..name_end],
-        input.state.parser_options.encoding,
-        framed.value_span.start,
-    )?
-    .into_owned();
+    let text = framed
+        .text
+        .map_err(|cause| decoding_error(framed.raw_data, framed.value_span.start, cause))?;
+    let encoding = input.state.parser_options.encoding;
     let start = framed.value_span.start;
+    let source_span = |span| {
+        let span = super::values::source_range(&text, span, encoding);
+        start + span.start..start + span.end
+    };
+    let comma = text.find(',');
+    let name_end = comma.unwrap_or(text.len());
+    let field_name = text[..name_end].to_owned();
+    let target_span = source_span(0..name_end);
 
     let constraint = if let Some(comma) = comma {
         let open = comma + 1;
 
-        if bytes.get(open) != Some(&b'{') {
+        if text.as_bytes().get(open) != Some(&b'{') {
             return Err(failure(
                 UserDefinitionError::MalformedDeclaration,
-                start + open..start + (open + 1).min(bytes.len()),
-            ));
-        }
-        if bytes.last() != Some(&b'}') || bytes.len() <= open + 1 {
-            return Err(failure(
-                UserDefinitionError::MalformedDeclaration,
-                start + bytes.len()..start + bytes.len(),
+                source_span(open..(open + 1).min(text.len())),
             ));
         }
 
-        let body = &bytes[open + 1..bytes.len() - 1];
-        let body_start = start + open + 1;
+        if !text.ends_with('}') || text.len() <= open + 1 {
+            return Err(failure(
+                UserDefinitionError::MalformedDeclaration,
+                source_span(text.len()..text.len()),
+            ));
+        }
 
-        if specifier.type_indicator != Some(DataType::Enumeration)
-            && let Some(colon) = body.iter().position(|b| *b == b':')
+        let body = &text[open + 1..text.len() - 1];
+        let body_start = open + 1;
+
+        let constraint = if specifier.type_indicator != Some(DataType::Enumeration)
+            && let Some(colon) = body.find(':')
         {
-            let bound = |part: &[u8], offset| {
-                parse_number(part).map_err(|error| {
-                    ContextError::from_external_error(
-                        input,
-                        AdiError::InvalidUserDefinition {
-                            field_name: framed.specifier.name.to_string(),
-                            span: offset + error.span.start..offset + error.span.end,
-                            cause: UserDefinitionError::InvalidRangeBound,
-                            numeric_cause: error.cause.map(Into::into),
-                        },
-                    )
+            let bound = |part: &str, offset| {
+                parse_number(part).map_err(|error| StructuralError::InvalidUserDefinition {
+                    field_name: framed.specifier.name.to_string(),
+                    span: source_span(offset + error.span.start..offset + error.span.end),
+                    cause: UserDefinitionError::InvalidRangeBound {
+                        source: error.cause,
+                    },
                 })
             };
 
@@ -242,56 +231,54 @@ pub(super) fn parse<'a>(
             if upper <= lower {
                 return Err(failure(
                     UserDefinitionError::InvalidRangeOrder,
-                    body_start + colon + 1..body_start + body.len(),
+                    source_span(body_start + colon + 1..body_start + body.len()),
                 ));
             }
 
-            Some(UserDefinitionConstraint::Range { lower, upper })
+            UserDefinitionConstraint::Range { lower, upper }
         } else {
             let mut items = Vec::new();
             let mut offset = body_start;
 
-            for part in body.split(|b| *b == b',') {
+            for part in body.split(',') {
                 if part.is_empty() {
                     return Err(failure(
                         UserDefinitionError::InvalidEnumeration,
-                        offset..offset,
-                    ));
-                }
-                if let Err(span) = check_text(part, input.state.parser_options.encoding, false) {
-                    return Err(failure(
-                        UserDefinitionError::InvalidEnumeration,
-                        offset + span.start..offset + span.end,
+                        source_span(offset..offset),
                     ));
                 }
 
-                items.push(
-                    decode_located(input, part, input.state.parser_options.encoding, offset)?
-                        .into_owned(),
-                );
+                let span = source_span(offset..offset + part.len());
+                let raw_part = &framed.raw_data[span.start - start..span.end - start];
+                if let Err(invalid) = check_text(raw_part, encoding, false) {
+                    return Err(failure(
+                        UserDefinitionError::InvalidEnumeration,
+                        span.start + invalid.start..span.start + invalid.end,
+                    ));
+                }
+
+                items.push(part.to_owned());
                 offset += part.len() + 1;
             }
 
-            Some(UserDefinitionConstraint::Enumeration(items))
-        }
+            UserDefinitionConstraint::Enumeration(items)
+        };
+        Some(LocatedConstraint {
+            constraint,
+            span: source_span(open..text.len()),
+        })
     } else {
         None
     };
 
     Ok(UserDefinition {
-        target_span: start..start + name_end,
-        constraint_span: comma.map(|offset| start + offset + 1..framed.value_span.end),
+        target_span,
         specifier,
         number,
         field_name,
         constraint,
         raw_data: framed.raw_data,
-        text: framed.text.map_err(|cause| {
-            ContextError::from_external_error(
-                input,
-                decoding_error(framed.raw_data, framed.value_span.start, cause),
-            )
-        })?,
+        text,
         descriptor_span: framed.descriptor_span,
         value_span: framed.value_span,
     })

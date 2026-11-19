@@ -4,15 +4,17 @@ use std::collections::HashMap;
 use std::ops::Range;
 
 use winnow::{
-    Parser as _, Result,
-    error::{ContextError, FromExternalError},
+    Parser as _,
     stream::{Location, Stream as _},
     token::take_until,
 };
 
-use super::super::{error::AdiError, framing};
+use super::super::{
+    error::{Result, StructuralError},
+    framing,
+};
 use super::field::{Field, prepared_field};
-use super::{Stream, definitions};
+use super::{Stream, declarations::UserDefinition, definitions};
 use crate::adif::adi::lookup::{LookupError, single_match};
 
 /// A complete ADI record containing at least one field.
@@ -46,7 +48,8 @@ impl<'a> Record<'a> {
             .filter(move |field| field.name().eq_ignore_ascii_case(name))
     }
 
-    /// Returns the section's syntactic byte range without surrounding separators.
+    /// Returns the section's syntactic byte range without surrounding
+    /// separators.
     ///
     /// Offsets refer to the input slice. The end is exclusive.
     pub fn span(&self) -> Range<usize> {
@@ -54,22 +57,23 @@ impl<'a> Record<'a> {
     }
 }
 
-pub(super) fn unique_field<'a>(
+pub(super) fn unique_field<'a, 'header>(
     input: &mut Stream<'a>,
     seen: &mut HashMap<String, Range<usize>>,
-) -> Result<Field<'a>> {
+    users: &HashMap<String, &'header UserDefinition<'a>>,
+) -> Result<Field<'a>, StructuralError<'header>> {
     let checkpoint = input.checkpoint();
-    let (parsed, resolution) = prepared_field(input)?;
+    let (parsed, resolution) = prepared_field(input, users)?;
     let key = parsed.name().to_ascii_uppercase();
 
     if let Some(first_span) = seen.get(&key) {
-        let cause = AdiError::DuplicateField {
+        let cause = StructuralError::DuplicateField {
             field_name: parsed.name().to_owned(),
             first_span: first_span.clone(),
             second_span: parsed.descriptor_span(),
         };
         input.reset(&checkpoint);
-        return Err(ContextError::from_external_error(input, cause));
+        return Err(cause);
     }
 
     seen.insert(key, parsed.descriptor_span());
@@ -77,12 +81,16 @@ pub(super) fn unique_field<'a>(
     Ok(parsed)
 }
 
-pub(super) fn record<'a>(input: &mut Stream<'a>) -> Result<Record<'a>> {
+pub(super) fn record<'a, 'header>(
+    input: &mut Stream<'a>,
+    users: &HashMap<String, &'header UserDefinition<'a>>,
+) -> Result<Record<'a>, StructuralError<'header>> {
     let mut seen = HashMap::new();
     take_until(0.., '<').void().parse_next(input)?;
     let start = input.current_token_start();
-    let (fields, end_span) =
-        framing::fields(input, "<EOR>", 1, |input| unique_field(input, &mut seen))?;
+    let (fields, end_span) = framing::fields(input, "<EOR>", 1, |input| {
+        unique_field(input, &mut seen, users)
+    })?;
     Ok(Record {
         fields,
         span: start..end_span.end,

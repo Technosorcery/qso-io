@@ -1,72 +1,145 @@
-//! Located syntax, decoding, and strict-conversion diagnostics.
+//! Located ADI syntax, decoding and value-conversion diagnostics.
 
 use std::{error::Error as StdError, fmt, num::ParseIntError, ops::Range};
 
 use thiserror::Error;
-use winnow::error::{ContextError, StrContext, StrContextValue};
+use winnow::error::{AddContext, FromExternalError, ParserError, StrContext, StrContextValue};
+use winnow::stream::{Location, Stream};
 
-use crate::adif::adi::parser::options::LengthUnit;
-use crate::adif::adi::parser::strict::declarations::UserDefinitionError;
+use super::framing::Input;
+use super::options::LengthUnit;
+use super::strict::declarations::UserDefinitionError;
 use crate::adif::value::ValueError;
 use crate::adif::{DataType, DataTypeError, DecodeError};
 
-/// The syntactic requirement that an ADI input failed to satisfy.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// A failed ADI syntax requirement and its underlying cause where applicable.
+#[derive(Debug, Error)]
 pub enum SyntaxErrorKind {
-    /// A field descriptor is incomplete or does not match the ADI syntax.
+    /// A field descriptor is incomplete or does not match ADI syntax.
+    #[error("malformed data descriptor")]
     MalformedDescriptor,
-    /// The required unsigned ASCII decimal length is missing or malformed.
+    /// The required unsigned decimal length is missing or malformed.
+    #[error("invalid field length")]
     InvalidLength,
-    /// The decimal length exceeds the parser's `usize` range.
-    LengthOverflow,
-    /// A supplied indicator is not one of the recognized ADIF type indicators.
-    UnknownTypeIndicator,
-    /// Input ended between header fields without the required EOH tag.
+    /// The supplied length exceeds the supported integer range.
+    #[error("field length exceeds the supported integer range")]
+    LengthOverflow {
+        /// The integer conversion failure.
+        #[source]
+        source: ParseIntError,
+    },
+    /// An inline indicator is not recognized.
+    #[error("unknown data type indicator")]
+    UnknownTypeIndicator {
+        /// The supplied indicator and its conversion failure.
+        #[source]
+        source: DataTypeError,
+    },
+    /// Input ended before the header terminator.
+    #[error("expected <EOH> before EOF")]
     MissingEoh,
-    /// Input ended after complete record fields without the required EOR tag.
+    /// Input ended before the record terminator.
+    #[error("expected <EOR> before EOF")]
     MissingEor,
-    /// The supplied field-name bytes are not valid UTF-8.
-    InvalidNameEncoding,
-    /// The supplied inline-indicator bytes are not valid UTF-8.
-    InvalidIndicatorEncoding,
+    /// A field name is not valid UTF-8.
+    #[error("invalid UTF-8 in field name")]
+    InvalidNameEncoding {
+        /// UTF-8 validation failure with byte offsets within the field name.
+        #[source]
+        source: std::str::Utf8Error,
+    },
+    /// An inline indicator is not valid UTF-8.
+    #[error("invalid UTF-8 in type indicator")]
+    InvalidIndicatorEncoding {
+        /// UTF-8 validation failure with byte offsets within the type
+        /// indicator.
+        #[source]
+        source: std::str::Utf8Error,
+    },
 }
 
-/// The kind of an ADI parsing error.
-#[derive(Debug, Clone)]
-pub enum StructuralErrorKind {
-    /// Two USERDEF declarations name the same record field under ASCII case-insensitive comparison.
+/// An ADI parsing failure with byte ranges in the parser's input and context.
+///
+/// Out-of-range bounds borrow the parser-owned header. Other diagnostic data is
+/// owned or static. Underlying conversion and decoding errors are available
+/// through [`StdError::source`]; constraint reasons are stored in their
+/// variant.
+#[derive(Debug)]
+pub enum StructuralError<'header> {
+    /// Two USERDEF declarations name the same record field under ASCII
+    /// case-insensitive comparison.
     DuplicateUserDefinition {
         /// Supplied repeated target name.
         field_name: String,
-        /// First target name's byte range in the input.
+        /// First target name's byte range in the parser's input, with an
+        /// exclusive end.
         first_span: Range<usize>,
-        /// Second target name's range and primary failure location.
+        /// Second target name's byte range in the parser's input and primary
+        /// failure location, with an exclusive end.
         second_span: Range<usize>,
     },
     /// A nonempty value violates a document USERDEF constraint.
     UserDefinitionConstraintViolation {
+        /// Primary byte range in the parser's input, with an exclusive end.
+        span: Range<usize>,
         /// Supplied record-field name.
         field_name: String,
-        /// Descriptor that establishes the user field.
+        /// Declaration descriptor's byte range in the parser's input, with an
+        /// exclusive end.
         declaration_span: Range<usize>,
-        /// Supplied constraint envelope, with braces.
+        /// Constraint's byte range in the parser's input, including braces and
+        /// with an exclusive end.
         constraint_span: Range<usize>,
         /// Constraint-specific reason with exact bounds where applicable.
-        cause: crate::adif::adi::parser::strict::declarations::UserDefinitionValueError,
+        cause: crate::adif::adi::parser::strict::declarations::UserDefinitionValueError<'header>,
     },
-    /// An inline indicator conflicts with the field's defined type.
-    TypeConflict {
+    /// An inline indicator is outside a standard field's permitted types.
+    StandardTypeConflict {
+        /// Supplied descriptor's byte range in the parser's input, with an
+        /// exclusive end.
+        span: Range<usize>,
         /// Supplied field name.
         field_name: String,
-        /// Types permitted by the definition, with or without an indicator.
-        expected: Vec<DataType>,
-        /// Type named by the supplied inline indicator.
+        /// Catalog types in preference order.
+        expected: &'static [DataType],
+        /// Supplied inline type.
         supplied: DataType,
-        /// USERDEF declaration or first application descriptor that establishes the type.
-        definition_span: Option<Range<usize>>,
+    },
+    /// An inline indicator conflicts with a USERDEF declaration.
+    UserTypeConflict {
+        /// Supplied descriptor's byte range in the parser's input, with an
+        /// exclusive end.
+        span: Range<usize>,
+        /// Supplied target name.
+        field_name: String,
+        /// The declared type.
+        expected: DataType,
+        /// Supplied inline type.
+        supplied: DataType,
+        /// Declaration's byte range in the parser's input, with an exclusive
+        /// end.
+        declaration_span: Range<usize>,
+    },
+    /// An inline indicator conflicts with an established application-field
+    /// type.
+    ApplicationTypeConflict {
+        /// Supplied descriptor's byte range in the parser's input, with an
+        /// exclusive end.
+        span: Range<usize>,
+        /// Supplied application-field name.
+        field_name: String,
+        /// The established type.
+        expected: DataType,
+        /// Supplied inline type.
+        supplied: DataType,
+        /// First descriptor's byte range in the parser's input, with an
+        /// exclusive end.
+        first_span: Range<usize>,
     },
     /// No permitted standard type accepts the supplied value.
     NoMatchingType {
+        /// Primary byte range in the parser's input, with an exclusive end.
+        span: Range<usize>,
         /// Supplied field name.
         field_name: String,
         /// Failures in preference order. The first supplies the primary span.
@@ -74,11 +147,15 @@ pub enum StructuralErrorKind {
     },
     /// Malformed syntax or a required section terminator missing at EOF.
     Syntax {
+        /// Primary byte range in the parser's input, with an exclusive end.
+        span: Range<usize>,
         /// The specific syntactic requirement that was not satisfied.
         reason: SyntaxErrorKind,
     },
     /// Input ended before a field supplied its declared number of units.
     TruncatedValue {
+        /// Primary byte range in the parser's input, with an exclusive end.
+        span: Range<usize>,
         /// Field name as supplied in the affected descriptor.
         field_name: String,
         /// Length declared by the descriptor, measured in `unit`.
@@ -88,17 +165,24 @@ pub enum StructuralErrorKind {
         /// Selected length interpretation. Both counts use this unit.
         unit: LengthUnit,
     },
-    /// A header or record has duplicate field names under ASCII case-insensitive comparison.
+    /// A header or record has duplicate field names under ASCII
+    /// case-insensitive comparison.
     DuplicateField {
         /// Field name as supplied in the affected descriptor.
         field_name: String,
-        /// First descriptor's byte range in the input, with exclusive end.
+        /// First descriptor's byte range in the parser's input, with an
+        /// exclusive end.
         first_span: Range<usize>,
-        /// Repeated descriptor's byte range in the input and primary error location.
+        /// Repeated descriptor's byte range in the parser's input and primary
+        /// failure location, with an exclusive end.
         second_span: Range<usize>,
     },
     /// Nonempty contents fail their resolved ADIF type grammar or membership.
     InvalidValue {
+        /// Underlying numeric conversion failure, when available.
+        source: Option<Box<dyn StdError + Send + Sync>>,
+        /// Primary byte range in the parser's input, with an exclusive end.
+        span: Range<usize>,
         /// Supplied field name.
         field_name: String,
         /// Declared type whose grammar failed.
@@ -108,6 +192,8 @@ pub enum StructuralErrorKind {
     },
     /// An invalid USERDEF declaration.
     InvalidUserDefinition {
+        /// Primary byte range in the parser's input, with an exclusive end.
+        span: Range<usize>,
         /// Supplied descriptor name.
         field_name: String,
         /// Declaration-specific reason.
@@ -115,12 +201,17 @@ pub enum StructuralErrorKind {
     },
     /// An ADIF data type is unavailable in ADI.
     TypeUnavailableInAdi {
+        /// Primary byte range in the parser's input, with an exclusive end.
+        span: Range<usize>,
         /// Recognized ADIF data type.
         data_type: DataType,
     },
     /// Text decoding failed in a field or header preamble.
     Decoding {
-        /// Decoding cause, with offsets relative to the field or preamble.
+        /// Primary byte range in the parser's input, with an exclusive end.
+        span: Range<usize>,
+        /// Decoding cause, with byte offsets within the field's raw value or
+        /// header preamble rather than the complete parser input.
         cause: DecodeError,
     },
 }
@@ -140,7 +231,8 @@ impl TypeAlternativeFailure {
         self.data_type
     }
 
-    /// Returns the failure's supplied input byte range.
+    /// Returns the failure's byte range in the parser's input, with an
+    /// exclusive end.
     pub fn span(&self) -> Range<usize> {
         self.span.clone()
     }
@@ -158,199 +250,126 @@ impl TypeAlternativeFailure {
     }
 }
 
-/// A structural error located in the supplied input byte slice.
-///
-/// Spans have exclusive ends. Truncated values and missing terminators have an
-/// empty span at input length. Incorrect bounded values can point inside the input.
-#[derive(Debug)]
-pub struct StructuralError {
-    span: Range<usize>,
-    kind: Box<StructuralErrorKind>,
-    cause: Option<Box<dyn StdError + Send + Sync>>,
+pub(super) type Result<T, E = StructuralError<'static>> = std::result::Result<T, E>;
+
+impl StructuralError<'_> {
+    /// Returns the primary byte range in the parser's input, with an exclusive
+    /// end.
+    pub fn span(&self) -> Range<usize> {
+        match self {
+            Self::DuplicateField { second_span, .. }
+            | Self::DuplicateUserDefinition { second_span, .. } => second_span.clone(),
+            Self::UserDefinitionConstraintViolation { span, .. }
+            | Self::StandardTypeConflict { span, .. }
+            | Self::UserTypeConflict { span, .. }
+            | Self::ApplicationTypeConflict { span, .. }
+            | Self::NoMatchingType { span, .. }
+            | Self::Syntax { span, .. }
+            | Self::TruncatedValue { span, .. }
+            | Self::InvalidValue { span, .. }
+            | Self::InvalidUserDefinition { span, .. }
+            | Self::TypeUnavailableInAdi { span, .. }
+            | Self::Decoding { span, .. } => span.clone(),
+        }
+    }
 }
 
-impl StructuralError {
-    /// Returns the primary error range in supplied input bytes.
-    ///
-    /// The end is exclusive. Truncation and missing-terminator errors point to
-    /// an empty range at EOF. Duplicate errors identify the second descriptor.
-    pub fn span(&self) -> Range<usize> {
-        self.span.clone()
+impl StdError for StructuralError<'_> {
+    fn source(&self) -> Option<&(dyn StdError + 'static)> {
+        use super::strict::declarations::UserDefinitionValueError;
+
+        match self {
+            Self::Syntax { reason, .. } => reason.source(),
+            Self::Decoding { cause, .. } => Some(cause),
+            Self::InvalidValue {
+                source: Some(source),
+                ..
+            } => Some(source.as_ref()),
+            Self::InvalidUserDefinition {
+                cause:
+                    UserDefinitionError::InvalidRangeBound {
+                        source: Some(source),
+                    },
+                ..
+            }
+            | Self::UserDefinitionConstraintViolation {
+                cause:
+                    UserDefinitionValueError::InvalidRangeValue {
+                        source: Some(source),
+                    },
+                ..
+            } => Some(source),
+            Self::InvalidValue { cause, .. } => Some(cause),
+            Self::InvalidUserDefinition { cause, .. } => Some(cause),
+            Self::UserDefinitionConstraintViolation { .. } => None,
+            _ => None,
+        }
+    }
+}
+
+impl<'a, 'header, S: fmt::Debug> ParserError<Input<'a, S>> for StructuralError<'header> {
+    type Inner = Self;
+
+    fn from_input(input: &Input<'a, S>) -> Self {
+        let start = input.current_token_start();
+        Self::Syntax {
+            span: start..start + usize::from(input.eof_offset() != 0),
+            reason: SyntaxErrorKind::MalformedDescriptor,
+        }
     }
 
-    /// Returns the error kind.
-    pub fn kind(&self) -> &StructuralErrorKind {
-        &self.kind
+    fn into_inner(self) -> Result<Self, Self> {
+        Ok(self)
     }
+}
 
-    pub(super) fn from_context(error: ContextError, offset: usize, input_len: usize) -> Self {
-        let point = offset..offset.saturating_add(1).min(input_len);
-        if let Some(cause) = error.cause().and_then(|e| e.downcast_ref::<AdiError>()) {
-            let (kind, span, source): (_, _, Option<Box<dyn StdError + Send + Sync>>) =
-                match cause.clone() {
-                    AdiError::Defined {
-                        kind,
-                        span,
-                        numeric_cause,
-                    } => (
-                        *kind,
-                        span,
-                        numeric_cause.map(crate::adif::number::NumericCause::boxed),
-                    ),
-                    AdiError::TruncatedValue {
-                        field_name,
-                        declared,
-                        available,
-                        unit,
-                    } => (
-                        StructuralErrorKind::TruncatedValue {
-                            field_name,
-                            declared,
-                            available,
-                            unit,
-                        },
-                        offset..offset,
-                        None,
-                    ),
-                    AdiError::DuplicateField {
-                        field_name,
-                        first_span,
-                        second_span,
-                    } => (
-                        StructuralErrorKind::DuplicateField {
-                            field_name,
-                            first_span,
-                            second_span: second_span.clone(),
-                        },
-                        second_span,
-                        None,
-                    ),
-                    AdiError::InvalidValue {
-                        field_name,
-                        span,
-                        cause,
-                        numeric_cause,
-                        enumeration,
-                    } => (
-                        StructuralErrorKind::InvalidValue {
-                            field_name,
-                            cause,
-                            enumeration,
-                        },
-                        span,
-                        numeric_cause.map(crate::adif::number::NumericCause::boxed),
-                    ),
-                    AdiError::InvalidUserDefinition {
-                        field_name,
-                        span,
-                        cause,
-                        numeric_cause,
-                    } => (
-                        StructuralErrorKind::InvalidUserDefinition { field_name, cause },
-                        span,
-                        numeric_cause.map(crate::adif::number::NumericCause::boxed),
-                    ),
-                    AdiError::TypeUnavailableInAdi { data_type, span } => (
-                        StructuralErrorKind::TypeUnavailableInAdi { data_type },
-                        span,
-                        None,
-                    ),
-                    AdiError::Decoding { span, cause } => {
-                        (StructuralErrorKind::Decoding { cause }, span, None)
-                    }
-                    AdiError::DescriptorEncoding {
-                        reason,
-                        span,
-                        cause,
-                    } => (
-                        StructuralErrorKind::Syntax { reason },
-                        span,
-                        Some(Box::new(cause) as _),
-                    ),
-                    AdiError::Syntax {
-                        reason,
-                        span,
-                        cause,
-                    } => (
-                        StructuralErrorKind::Syntax { reason },
-                        span,
-                        cause.map(|e| Box::new(e) as _),
-                    ),
-                };
-            return Self {
-                span,
-                kind: Box::new(kind),
-                cause: source,
-            };
-        }
-        if let Some(DataTypeError::UnknownTypeSpecifier(indicator)) = error
-            .cause()
-            .and_then(|e| e.downcast_ref::<DataTypeError>())
+impl<'a, 'header, S: fmt::Debug> AddContext<Input<'a, S>, StrContext> for StructuralError<'header> {
+    fn add_context(
+        mut self,
+        _input: &Input<'a, S>,
+        _start: &<Input<'a, S> as Stream>::Checkpoint,
+        context: StrContext,
+    ) -> Self {
+        if let Self::Syntax {
+            reason: SyntaxErrorKind::MalformedDescriptor,
+            span,
+        } = self
         {
-            return Self {
-                span: offset..offset.saturating_add(indicator.len().max(1)).min(input_len),
-                kind: Box::new(StructuralErrorKind::Syntax {
-                    reason: SyntaxErrorKind::UnknownTypeIndicator,
-                }),
-                cause: Some(Box::new(DataTypeError::UnknownTypeSpecifier(
-                    indicator.clone(),
-                ))),
-            };
-        }
-        if let Some(cause) = error
-            .cause()
-            .and_then(|e| e.downcast_ref::<std::string::FromUtf8Error>())
-        {
-            let start = offset + 1 + cause.utf8_error().valid_up_to();
-            let end = start
-                + cause
-                    .utf8_error()
-                    .error_len()
-                    .unwrap_or(cause.as_bytes().len() - cause.utf8_error().valid_up_to());
-            return Self {
-                span: start..end,
-                kind: Box::new(StructuralErrorKind::Syntax {
-                    reason: SyntaxErrorKind::InvalidNameEncoding,
-                }),
-                cause: Some(Box::new(cause.clone())),
-            };
-        }
-        // These are structured expected tokens, not rendered error messages.
-        let reason = error
-            .context()
-            .find_map(|c| match c {
+            let reason = match context {
                 StrContext::Expected(StrContextValue::StringLiteral("<EOH>")) => {
-                    Some(SyntaxErrorKind::MissingEoh)
+                    SyntaxErrorKind::MissingEoh
                 }
                 StrContext::Expected(StrContextValue::StringLiteral("<EOR>")) => {
-                    Some(SyntaxErrorKind::MissingEor)
+                    SyntaxErrorKind::MissingEor
                 }
-                _ => None,
-            })
-            .unwrap_or(SyntaxErrorKind::MalformedDescriptor);
-        Self {
-            span: point,
-            kind: Box::new(StructuralErrorKind::Syntax { reason }),
-            cause: None,
+                _ => SyntaxErrorKind::MalformedDescriptor,
+            };
+            self = Self::Syntax { reason, span };
+        }
+        self
+    }
+}
+
+impl<'a, 'header, S: fmt::Debug> FromExternalError<Input<'a, S>, DataTypeError>
+    for StructuralError<'header>
+{
+    fn from_external_error(input: &Input<'a, S>, error: DataTypeError) -> Self {
+        let indicator = &error.supplied;
+        let start = input.current_token_start();
+        let width = indicator.len().max(1).min(input.eof_offset());
+        Self::Syntax {
+            span: start..start + width,
+            reason: SyntaxErrorKind::UnknownTypeIndicator { source: error },
         }
     }
 }
 
-impl fmt::Display for StructuralError {
-    /// Formats the error's byte range and description.
+impl fmt::Display for StructuralError<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "ADI error at bytes {}..{}: {}",
-            self.span.start, self.span.end, self.kind
-        )
-    }
-}
-
-impl fmt::Display for StructuralErrorKind {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let span = self.span();
+        write!(f, "ADI error at bytes {}..{}: ", span.start, span.end)?;
         match self {
-            StructuralErrorKind::DuplicateUserDefinition {
+            StructuralError::DuplicateUserDefinition {
                 field_name,
                 first_span,
                 ..
@@ -359,7 +378,7 @@ impl fmt::Display for StructuralErrorKind {
                 "duplicate USERDEF target {field_name}; first declared at bytes {}..{}",
                 first_span.start, first_span.end
             ),
-            StructuralErrorKind::UserDefinitionConstraintViolation {
+            StructuralError::UserDefinitionConstraintViolation {
                 field_name,
                 cause,
                 constraint_span,
@@ -369,7 +388,7 @@ impl fmt::Display for StructuralErrorKind {
                 "USERDEF constraint failed for {field_name}: {cause}; constraint at bytes {}..{}",
                 constraint_span.start, constraint_span.end
             ),
-            StructuralErrorKind::TypeConflict {
+            StructuralError::StandardTypeConflict {
                 field_name,
                 expected,
                 supplied,
@@ -378,9 +397,25 @@ impl fmt::Display for StructuralErrorKind {
                 f,
                 "type conflict for {field_name}: expected {expected:?}, supplied {supplied:?}"
             ),
-            StructuralErrorKind::NoMatchingType {
+            StructuralError::UserTypeConflict {
+                field_name,
+                expected,
+                supplied,
+                ..
+            }
+            | StructuralError::ApplicationTypeConflict {
+                field_name,
+                expected,
+                supplied,
+                ..
+            } => write!(
+                f,
+                "type conflict for {field_name}: expected {expected:?}, supplied {supplied:?}"
+            ),
+            StructuralError::NoMatchingType {
                 field_name,
                 failures,
+                ..
             } => {
                 write!(f, "no permitted type accepts {field_name}")?;
                 for failure in failures {
@@ -392,31 +427,18 @@ impl fmt::Display for StructuralErrorKind {
                 }
                 Ok(())
             }
-            StructuralErrorKind::Syntax { reason } => write!(
-                f,
-                "{}",
-                match reason {
-                    SyntaxErrorKind::MalformedDescriptor => "malformed data descriptor",
-                    SyntaxErrorKind::InvalidLength => "invalid field length",
-                    SyntaxErrorKind::LengthOverflow =>
-                        "field length exceeds the supported integer range",
-                    SyntaxErrorKind::UnknownTypeIndicator => "unknown data type indicator",
-                    SyntaxErrorKind::MissingEoh => "expected <EOH> before EOF",
-                    SyntaxErrorKind::MissingEor => "expected <EOR> before EOF",
-                    SyntaxErrorKind::InvalidNameEncoding => "invalid UTF-8 in field name",
-                    SyntaxErrorKind::InvalidIndicatorEncoding => "invalid UTF-8 in type indicator",
-                }
-            ),
-            StructuralErrorKind::TruncatedValue {
+            StructuralError::Syntax { reason, .. } => write!(f, "{reason}"),
+            StructuralError::TruncatedValue {
                 field_name,
                 declared,
                 available,
                 unit,
+                ..
             } => write!(
                 f,
                 "truncated value for {field_name}: declared {declared}, available {available} ({unit:?})"
             ),
-            StructuralErrorKind::DuplicateField {
+            StructuralError::DuplicateField {
                 field_name,
                 first_span,
                 ..
@@ -425,108 +447,22 @@ impl fmt::Display for StructuralErrorKind {
                 "duplicate field {field_name}; first descriptor at bytes {}..{}",
                 first_span.start, first_span.end
             ),
-            StructuralErrorKind::InvalidValue {
+            StructuralError::InvalidValue {
                 field_name, cause, ..
             } => {
                 write!(f, "invalid value for {field_name}: {cause}")
             }
-            StructuralErrorKind::InvalidUserDefinition { field_name, cause } => {
+            StructuralError::InvalidUserDefinition {
+                field_name, cause, ..
+            } => {
                 write!(f, "invalid declaration {field_name}: {cause}")
             }
-            StructuralErrorKind::TypeUnavailableInAdi { data_type } => {
+            StructuralError::TypeUnavailableInAdi { data_type, .. } => {
                 write!(f, "type {data_type:?} is unavailable in ADI")
             }
-            StructuralErrorKind::Decoding { cause } => {
+            StructuralError::Decoding { cause, .. } => {
                 write!(f, "text decoding failed: {cause}")
             }
         }
     }
-}
-
-impl StdError for StructuralError {
-    fn source(&self) -> Option<&(dyn StdError + 'static)> {
-        if let StructuralErrorKind::Decoding { cause } = self.kind.as_ref() {
-            return Some(cause);
-        }
-        if let Some(cause) = self.cause.as_deref() {
-            return Some(cause);
-        }
-        if let StructuralErrorKind::UserDefinitionConstraintViolation { cause, .. } =
-            self.kind.as_ref()
-        {
-            return Some(cause);
-        }
-        if let StructuralErrorKind::InvalidValue { cause, .. } = self.kind.as_ref() {
-            return Some(cause);
-        }
-        if let StructuralErrorKind::InvalidUserDefinition { cause, .. } = self.kind.as_ref() {
-            return Some(cause);
-        }
-        None
-    }
-}
-
-#[derive(Debug, Error, Clone)]
-pub(super) enum AdiError {
-    #[error("{kind}")]
-    Defined {
-        kind: Box<StructuralErrorKind>,
-        span: Range<usize>,
-        numeric_cause: Option<crate::adif::number::NumericCause>,
-    },
-    #[error("duplicate field {field_name}")]
-    DuplicateField {
-        field_name: String,
-        first_span: Range<usize>,
-        second_span: Range<usize>,
-    },
-    #[error(
-        "truncated value for {field_name}: declared {declared}, found {available} before EOF (unit: {unit:?})"
-    )]
-    TruncatedValue {
-        field_name: String,
-        declared: usize,
-        available: usize,
-        unit: LengthUnit,
-    },
-    #[error("invalid value for {field_name}: {cause}")]
-    InvalidValue {
-        field_name: String,
-        span: Range<usize>,
-        cause: ValueError,
-        numeric_cause: Option<crate::adif::number::NumericCause>,
-        enumeration: Option<&'static str>,
-    },
-    #[error("invalid declaration {field_name}: {cause}")]
-    InvalidUserDefinition {
-        field_name: String,
-        span: Range<usize>,
-        cause: UserDefinitionError,
-        numeric_cause: Option<crate::adif::number::NumericCause>,
-    },
-    #[error("type {data_type:?} is unavailable in ADI")]
-    TypeUnavailableInAdi {
-        data_type: DataType,
-        span: Range<usize>,
-    },
-    #[error("text decoding failed: {cause}")]
-    Decoding {
-        span: Range<usize>,
-        #[source]
-        cause: DecodeError,
-    },
-    #[error("invalid descriptor encoding: {cause}")]
-    DescriptorEncoding {
-        reason: SyntaxErrorKind,
-        span: Range<usize>,
-        #[source]
-        cause: std::string::FromUtf8Error,
-    },
-    #[error("invalid field length: {reason:?}")]
-    Syntax {
-        reason: SyntaxErrorKind,
-        span: Range<usize>,
-        #[source]
-        cause: Option<ParseIntError>,
-    },
 }
