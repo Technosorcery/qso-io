@@ -65,6 +65,9 @@ fn header_and_completed_records_remain_usable_after_later_failure() {
         assert_eq!(score.number().to_string(), "123456789012345678901234567890");
         assert_eq!(score.field_name(), "SCORE");
         assert_eq!(score.data_type(), DataType::Number);
+        assert_eq!(score.definition().name, score.field_name());
+        assert_eq!(score.definition().data_type, Some(score.data_type()));
+        assert_eq!(score.definition().constraint, score.constraint());
         assert_eq!(
             &input.as_bytes()[score.identifier_span()],
             b"123456789012345678901234567890"

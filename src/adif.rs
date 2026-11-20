@@ -3,8 +3,9 @@
 //!
 //! [`DataType`] describes ADIF value categories. [`value`] provides stored ADIF
 //! values, and [`StandardField`] describes standard field definitions.
-//! Reference enums describe ADIF enumeration identities and their metadata. See
-//! [`adi::parser`] and [`adx::parser`] for strict and permissive parsing.
+//! Reference enums describe ADIF enumeration identities and their metadata.
+//! See [`adi::parser`] and [`adx::parser`] for strict and permissive parsing,
+//! and [`adi::writer`] for ADI output.
 
 use std::str::Utf8Error;
 
@@ -19,7 +20,7 @@ pub use enumerations::{
 };
 pub use standard_field::{FieldSection, StandardField};
 
-/// Borrowed ADI sections, their parser, and structural diagnostics.
+/// ADI readers, writer, and format diagnostics.
 pub mod adi;
 /// Borrowed ADX sections with located warnings and typed or unchecked fields.
 pub mod adx;
@@ -29,6 +30,17 @@ mod parse;
 mod standard_field;
 mod text;
 pub mod value;
+
+/// A borrowed declaration of a user-defined ADIF field.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct UserFieldDefinition<'a> {
+    /// Name used to refer to the field in a record.
+    pub name: &'a str,
+    /// Declared type, when the format and declaration provide one.
+    pub data_type: Option<DataType>,
+    /// Declared enumeration or numeric range.
+    pub constraint: Option<&'a value::UserDefinitionConstraint>,
+}
 
 /// A text-decoding failure in field data or a header preamble.
 #[derive(Debug, Error, Clone, PartialEq, Eq)]

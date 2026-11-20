@@ -6,6 +6,8 @@ use bigdecimal::{BigDecimal, num_bigint::BigInt};
 use chrono::{NaiveDate, NaiveTime};
 use thiserror::Error;
 
+use super::number::{NumberFailure, parse_number};
+
 /// An ADIF field value.
 ///
 /// This enum is exhaustive. Untyped contents and declared text types use the
@@ -182,11 +184,54 @@ pub enum ValueError {
 pub enum UserDefinitionConstraint {
     /// Nonempty String members with their supplied spelling and order.
     Enumeration(Vec<String>),
-    /// A range whose upper bound is strictly greater than its lower bound.
+    /// An inclusive range whose upper bound is strictly greater than its lower bound.
     Range {
         /// Exact lower bound.
         lower: BigDecimal,
         /// Exact upper bound.
         upper: BigDecimal,
     },
+}
+
+pub(crate) enum UserConstraintViolation<'a> {
+    NotInEnumeration,
+    InvalidNumber(NumberFailure),
+    OutOfRange {
+        lower: &'a BigDecimal,
+        upper: &'a BigDecimal,
+    },
+}
+
+pub(crate) fn check_user_constraint<'a>(
+    constraint: &'a UserDefinitionConstraint,
+    text: &str,
+    parsed_number: Option<&BigDecimal>,
+) -> Result<(), UserConstraintViolation<'a>> {
+    if text.is_empty() {
+        return Ok(());
+    }
+    match constraint {
+        UserDefinitionConstraint::Enumeration(members) => {
+            if !members
+                .iter()
+                .any(|member| caseless::default_caseless_match_str(member, text))
+            {
+                return Err(UserConstraintViolation::NotInEnumeration);
+            }
+        }
+        UserDefinitionConstraint::Range { lower, upper } => {
+            let parsed;
+            let number = match parsed_number {
+                Some(number) => number,
+                None => {
+                    parsed = parse_number(text).map_err(UserConstraintViolation::InvalidNumber)?;
+                    &parsed
+                }
+            };
+            if number < lower || number > upper {
+                return Err(UserConstraintViolation::OutOfRange { lower, upper });
+            }
+        }
+    }
+    Ok(())
 }

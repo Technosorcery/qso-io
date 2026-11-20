@@ -1,8 +1,9 @@
 # qso-io
 
 qso-io is a Rust library for the Amateur Data Interchange Format (ADIF).
-It reads ADI text and ADX XML, with strict and permissive parsers.
-The field definitions follow ADIF 3.1.8.
+It reads ADI text and ADX XML with strict and permissive parsers, and writes
+ADI text from structured headers and records. The field definitions follow
+ADIF 3.1.8.
 
 ## Install
 

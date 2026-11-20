@@ -11,8 +11,8 @@ use super::super::{
 };
 use super::field::{DataSpecifier, strict_specifier};
 use super::{Stream, decoding_error};
-use crate::adif::DataType;
 use crate::adif::value::UserDefinitionConstraint;
+use crate::adif::{DataType, UserFieldDefinition, adi::userdef_suffix};
 use crate::adif::{number::parse_number, text::check_text};
 
 /// A parsed USERDEFn header declaration with its supplied spelling and bytes.
@@ -36,6 +36,15 @@ pub(super) struct LocatedConstraint {
 }
 
 impl<'a> UserDefinition<'a> {
+    /// Borrows the declaration data, with `None` for an omitted type.
+    pub fn definition(&self) -> UserFieldDefinition<'_> {
+        UserFieldDefinition {
+            name: self.field_name(),
+            data_type: self.data_type(),
+            constraint: self.constraint(),
+        }
+    }
+
     /// Returns the supplied USERDEFn descriptor name.
     pub fn name(&self) -> &str {
         &self.specifier.name
@@ -139,10 +148,7 @@ pub enum UserDefinitionValueError<'header> {
 }
 
 pub(super) fn is_declaration(name: &str) -> bool {
-    name.get(..7)
-        .is_some_and(|prefix| prefix.eq_ignore_ascii_case("USERDEF"))
-        && name.len() > 7
-        && name.as_bytes()[7..].iter().all(u8::is_ascii_digit)
+    userdef_suffix(name).is_some()
 }
 
 pub(super) fn parse<'a>(

@@ -1,9 +1,6 @@
 use std::collections::HashMap;
 
-use crate::adif::{
-    number::parse_number,
-    value::{UserDefinitionConstraint, Value},
-};
+use crate::adif::value::{UserConstraintViolation, Value, check_user_constraint};
 
 use super::super::{
     decoding::{TextContext, locate_text_range},
@@ -59,42 +56,25 @@ impl UserDefinition<'_> {
             source,
         };
 
-        match &constraint.constraint {
-            UserDefinitionConstraint::Enumeration(members)
-                if !members
-                    .iter()
-                    .any(|m| caseless::default_caseless_match_str(m, f.text())) =>
-            {
-                Err(fail(f.value_span(), None))
+        let number = match f.value() {
+            Some(Value::Number(number)) => Some(number),
+            _ => None,
+        };
+        match check_user_constraint(&constraint.constraint, f.text(), number) {
+            Ok(()) => Ok(()),
+            Err(UserConstraintViolation::InvalidNumber(error)) => {
+                let span = locate_text_range(
+                    f.element.raw_content,
+                    f.value_span().start,
+                    error.span,
+                    TextContext::Content,
+                )?;
+                Err(fail(span, error.cause))
             }
-
-            UserDefinitionConstraint::Range { lower, upper } => {
-                let parsed;
-                let n = if let Some(Value::Number(number)) = f.value() {
-                    number
-                } else {
-                    parsed = match parse_number(f.text()) {
-                        Ok(parsed) => parsed,
-                        Err(error) => {
-                            let span = locate_text_range(
-                                f.element.raw_content,
-                                f.value_span().start,
-                                error.span,
-                                TextContext::Content,
-                            )?;
-                            return Err(fail(span, error.cause));
-                        }
-                    };
-                    &parsed
-                };
-
-                if n < lower || n > upper {
-                    Err(fail(f.value_span(), None))
-                } else {
-                    Ok(())
-                }
-            }
-            _ => Ok(()),
+            Err(
+                UserConstraintViolation::NotInEnumeration
+                | UserConstraintViolation::OutOfRange { .. },
+            ) => Err(fail(f.value_span(), None)),
         }
     }
 }

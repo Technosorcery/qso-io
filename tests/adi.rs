@@ -10,3 +10,5 @@ mod framing;
 mod permissive;
 #[path = "adi/strict.rs"]
 mod strict;
+#[path = "adi/writer.rs"]
+mod writer;

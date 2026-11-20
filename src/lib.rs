@@ -1,8 +1,8 @@
-//! Read Amateur Data Interchange Format (ADIF) files.
+//! Read and write Amateur Data Interchange Format (ADIF) files.
 //!
-//! The crate reads ADI text and ADX XML. The parsers keep original field bytes
-//! and report byte ranges in the input. The field definitions follow
-//! ADIF 3.1.8.
+//! The crate reads ADI text and ADX XML and writes ADI text. The parsers keep
+//! original field bytes and report byte ranges in the input. The field
+//! definitions follow ADIF 3.1.8.
 //!
 //! # Select a parser
 //!
@@ -45,6 +45,11 @@
 //! For typed ADI values, use
 //! [`StrictParser`](adif::adi::parser::strict::StrictParser).
 //! Iterate over `&mut parser` with a `for` loop.
+//!
+//! # Write ADI
+//!
+//! The [ADI writer guide](adif::adi::writer) shows how to write a header and
+//! a record with standard, application-defined, and user-defined fields.
 //!
 //! # Read ADX
 //!
