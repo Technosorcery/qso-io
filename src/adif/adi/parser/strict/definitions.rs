@@ -7,6 +7,8 @@ use super::{declarations::UserDefinition, values};
 use crate::adif::DataType;
 use crate::adif::adi::parser::options::ParseEncoding;
 use crate::adif::adi::parser::strict::field::{DataSpecifier, Field};
+use crate::adif::adi::{application::resolve_application_type, reserved_user_field_name};
+use crate::adif::value::{UserConstraintViolation, check_user_constraint};
 use crate::adif::{FieldSection, StandardField};
 
 #[derive(Debug, Default)]
@@ -94,29 +96,21 @@ pub(super) fn resolve(
                 .map_or(TypeSelection::Untyped, TypeSelection::Single)
         }
     } else if application_rule {
-        if let Some(established) = state
+        let established = state
             .application_types
-            .get(&specifier.name.to_ascii_uppercase())
-        {
-            if let Some(supplied) = specifier.type_indicator
-                && supplied != established.data_type
-            {
-                return Err(StructuralError::ApplicationTypeConflict {
-                    span: descriptor_span,
-                    field_name: specifier.name.to_string(),
-                    expected: established.data_type,
-                    supplied,
-                    first_span: established.first_descriptor_span.clone(),
-                });
-            }
-            TypeSelection::Single(established.data_type)
-        } else {
-            TypeSelection::Single(
-                specifier
-                    .type_indicator
-                    .unwrap_or(DataType::MultilineString),
-            )
-        }
+            .get(&specifier.name.to_ascii_uppercase());
+        let data_type = resolve_application_type(
+            established.map(|first| (first.data_type, &first.first_descriptor_span)),
+            specifier.type_indicator,
+        )
+        .map_err(|conflict| StructuralError::ApplicationTypeConflict {
+            span: descriptor_span.clone(),
+            field_name: specifier.name.to_string(),
+            expected: conflict.established,
+            supplied: conflict.supplied,
+            first_span: conflict.first.clone(),
+        })?;
+        TypeSelection::Single(data_type)
     } else {
         specifier
             .type_indicator
@@ -144,10 +138,7 @@ pub(super) fn check_user_definition(
     definition: &UserDefinition<'_>,
 ) -> Result<(), StructuralError<'static>> {
     let target = definition.field_name();
-    let standard_name = target.parse::<StandardField>().is_ok()
-        || (super::declarations::is_declaration(target)
-            && target.as_bytes()[7..].iter().any(|byte| *byte != b'0'));
-    if standard_name {
+    if reserved_user_field_name(target) {
         return Err(StructuralError::InvalidUserDefinition {
             field_name: definition.name().to_owned(),
             span: definition.target_span.clone(),
@@ -172,8 +163,6 @@ pub(super) fn check_user_constraints<'header>(
     encoding: ParseEncoding,
 ) -> Result<(), StructuralError<'header>> {
     use super::declarations::UserDefinitionValueError;
-    use crate::adif::value::UserDefinitionConstraint;
-
     if field.value().is_none() {
         return Ok(());
     }
@@ -193,38 +182,27 @@ pub(super) fn check_user_constraints<'header>(
         cause,
     };
 
-    match &located.constraint {
-        UserDefinitionConstraint::Enumeration(members) => {
-            if !members
-                .iter()
-                .any(|member| caseless::default_caseless_match_str(member, field.text()))
-            {
-                return Err(fail(
-                    UserDefinitionValueError::NotInEnumeration,
-                    field.value_span(),
-                ));
-            }
+    match check_user_constraint(&located.constraint, field.text(), None) {
+        Ok(()) => Ok(()),
+        Err(UserConstraintViolation::NotInEnumeration) => Err(fail(
+            UserDefinitionValueError::NotInEnumeration,
+            field.value_span(),
+        )),
+        Err(UserConstraintViolation::InvalidNumber(error)) => {
+            let start = field.value_span().start;
+            let span = values::source_range(field.text(), error.span, encoding);
+            Err(fail(
+                UserDefinitionValueError::InvalidRangeValue {
+                    source: error.cause,
+                },
+                start + span.start..start + span.end,
+            ))
         }
-        UserDefinitionConstraint::Range { lower, upper } => {
-            let value = crate::adif::number::parse_number(field.text()).map_err(|error| {
-                let start = field.value_span().start;
-                let span = values::source_range(field.text(), error.span, encoding);
-                fail(
-                    UserDefinitionValueError::InvalidRangeValue {
-                        source: error.cause,
-                    },
-                    start + span.start..start + span.end,
-                )
-            })?;
-            if value < *lower || value > *upper {
-                return Err(fail(
-                    UserDefinitionValueError::OutOfRange { lower, upper },
-                    field.value_span(),
-                ));
-            }
-        }
+        Err(UserConstraintViolation::OutOfRange { lower, upper }) => Err(fail(
+            UserDefinitionValueError::OutOfRange { lower, upper },
+            field.value_span(),
+        )),
     }
-    Ok(())
 }
 
 #[derive(Debug)]

@@ -5,7 +5,7 @@ use std::{borrow::Cow, ops::Range};
 use bigdecimal::num_bigint::BigUint;
 
 use crate::adif::value::UserDefinitionConstraint;
-use crate::adif::{DataType, StandardField, number::parse_number};
+use crate::adif::{DataType, StandardField, UserFieldDefinition, number::parse_number};
 
 use super::super::{
     decoding,
@@ -35,6 +35,16 @@ pub(super) struct LocatedConstraint {
 }
 
 impl<'a> UserDefinition<'a> {
+    /// Borrows the declaration data. The type is always `Some` because ADX
+    /// requires the declaration's `TYPE` attribute.
+    pub fn definition(&self) -> UserFieldDefinition<'_> {
+        UserFieldDefinition {
+            name: self.field_name(),
+            data_type: Some(self.data_type()),
+            constraint: self.constraint(),
+        }
+    }
+
     /// Returns the positive declaration identifier from FIELDID.
     pub fn number(&self) -> &BigUint {
         &self.number
