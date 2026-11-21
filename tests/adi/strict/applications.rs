@@ -82,18 +82,38 @@ fn application_type_state_is_document_local_and_respects_userdef() {
         Some(DataType::MultilineString)
     );
 
-    let bytes=b"P<USERDEF1:17:N>APP_EXAMPLE_SCORE<EOH><APP_EXAMPLE_SCORE:1>1<EOR><APP_EXAMPLE_SCORE:1:S>A<EOR>";
-    let mut parser_owner = StrictParser::new(bytes, ParseOpts::default());
-    let mut parser = parser_owner.into_iter();
-    drop(next_section(&mut parser));
-    let _ = next_section(&mut parser);
-    let error = next_error(&mut parser);
-    let error::StructuralError::UserTypeConflict {
-        declaration_span: span,
-        ..
-    } = &error
-    else {
-        panic!("expected USERDEF conflict, got {error:?}");
-    };
-    assert_eq!(&bytes[span.clone()], b"<USERDEF1:17:N>");
+    for name in ["APP_EXAMPLE_SCORE", "APP__EXAMPLE_NOTE"] {
+        let bytes = format!("P<USERDEF1:17:N>{name}<EOH><{name}:1>1<EOR><{name}:1:S>A<EOR>");
+        let mut parser_owner = StrictParser::new(bytes.as_bytes(), ParseOpts::default());
+        let mut parser = parser_owner.into_iter();
+        drop(next_section(&mut parser));
+        let _ = next_section(&mut parser);
+        let error = next_error(&mut parser);
+        let error::StructuralError::UserTypeConflict {
+            declaration_span: span,
+            ..
+        } = &error
+        else {
+            panic!("expected USERDEF conflict for {name}, got {error:?}");
+        };
+        assert_eq!(&bytes.as_bytes()[span.clone()], b"<USERDEF1:17:N>");
+    }
+}
+
+#[test]
+fn rejects_an_application_field_with_an_empty_program_id() {
+    let bytes = b"<APP__EXAMPLE_NOTE:1>x<EOR>";
+    let mut parser = StrictParser::new(bytes, ParseOpts::default());
+    let mut sections = parser.into_iter();
+
+    let error = next_error(&mut sections);
+    assert!(matches!(
+        error,
+        error::StructuralError::Syntax {
+            reason: error::SyntaxErrorKind::EmptyApplicationProgramId,
+            ..
+        }
+    ));
+    assert_eq!(&bytes[error.span()], b"<APP__EXAMPLE_NOTE:1>");
+    assert_exhausted(&mut sections);
 }

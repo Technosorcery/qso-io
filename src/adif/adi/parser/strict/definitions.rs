@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::ops::Range;
 
-use super::super::options::ParseOpts;
+use super::super::{error::SyntaxErrorKind, options::ParseOpts};
 use super::error::StructuralError;
 use super::{declarations::UserDefinition, values};
 use crate::adif::DataType;
@@ -30,13 +30,16 @@ pub(super) struct ResolvedDefinition {
     pub standard: Option<StandardField>,
 }
 
-pub(super) fn is_application(name: &str) -> bool {
-    name.get(..4)
-        .is_some_and(|p| p.eq_ignore_ascii_case("APP_"))
-        && name.get(4..).is_some_and(|tail| {
-            tail.split_once('_')
-                .is_some_and(|(program, field)| !program.is_empty() && !field.is_empty())
-        })
+fn is_application(name: &str) -> Result<bool, SyntaxErrorKind> {
+    let components = name
+        .split_at_checked(4)
+        .filter(|(prefix, _)| prefix.eq_ignore_ascii_case("APP_"))
+        .and_then(|(_, tail)| tail.split_once('_'));
+    match components {
+        Some(("", _)) => Err(SyntaxErrorKind::EmptyApplicationProgramId),
+        Some((_, field)) => Ok(!field.is_empty()),
+        None => Ok(false),
+    }
 }
 
 pub(super) fn resolve(
@@ -59,7 +62,10 @@ pub(super) fn resolve(
     let application_rule = standard.is_none()
         && user.is_none()
         && section == FieldSection::Record
-        && is_application(&specifier.name);
+        && is_application(&specifier.name).map_err(|reason| StructuralError::Syntax {
+            reason,
+            span: descriptor_span.clone(),
+        })?;
     let selection = if let Some(definition) = standard {
         if let Some(supplied) = specifier.type_indicator
             && !definition.data_types().contains(&supplied)

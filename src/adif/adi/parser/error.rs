@@ -18,6 +18,9 @@ pub enum SyntaxErrorKind {
     /// A field descriptor is incomplete or does not match ADI syntax.
     #[error("malformed data descriptor")]
     MalformedDescriptor,
+    /// An application-defined record field has an empty program ID.
+    #[error("empty program ID in application-defined field name")]
+    EmptyApplicationProgramId,
     /// The required unsigned decimal length is missing or malformed.
     #[error("invalid field length")]
     InvalidLength,
