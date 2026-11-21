@@ -6,6 +6,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 This project follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0](https://github.com/Technosorcery/qso-io/compare/v0.2.0...v0.3.0) - 2026-11-21
+
+### Changes
+
+- Reject empty program IDs in strict ADI application fields
+- Add a streaming ADI writer
+
 ## [0.2.0](https://github.com/Technosorcery/qso-io/compare/v0.1.0...v0.2.0) - 2026-11-19
 
 ### Changes
